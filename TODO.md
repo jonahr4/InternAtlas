@@ -6,11 +6,11 @@
 - [x] Run dev server and confirm homepage loads
 
 ## Phase 1 - Foundation (DB + app skeleton)
-- [ ] Start local Postgres in Docker
-- [ ] Add Prisma and configure `DATABASE_URL`
-- [ ] Define schema: `companies`, `jobs` (optional: `crawl_runs`)
-- [ ] Create `GET /api/jobs` that reads from DB
-- [ ] Build minimal Job Board UI wired to `/api/jobs`
+- [x] Start local Postgres in Docker
+- [x] Add Prisma and configure `DATABASE_URL`
+- [x] Define schema: `companies`, `jobs` (optional: `crawl_runs`)
+- [x] Create `GET /api/jobs` that reads from DB
+- [x] Build minimal Job Board UI wired to `/api/jobs`
 
 ## Phase 2 - Ingestion MVP (jobs -> DB)
 - [ ] Add `data/companies.json` seed list

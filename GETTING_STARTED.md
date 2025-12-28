@@ -17,12 +17,35 @@ cd app
 npm install
 ```
 
-3) Start the dev server:
+3) Set your environment:
+```bash
+cp .env.example .env
+```
+
+4) Start Postgres (Docker must be running):
+```bash
+docker run --name internatlas-postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_DB=internatlas \
+  -p 5432:5432 \
+  -d postgres:16
+```
+
+5) Apply the database schema:
+```bash
+npx prisma migrate dev --name init
+```
+
+6) Replace the default Next.js homepage with the project placeholder:
+- Edit `app/src/app/page.tsx`
+
+7) Start the dev server:
 ```bash
 npm run dev
 ```
 
-4) Open the app:
+8) Open the app:
 - http://localhost:3000
 
 ## Next Step

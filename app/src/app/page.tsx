@@ -30,6 +30,12 @@ export default async function Home() {
         InternAtlas
       </h1>
       <p className="text-lg text-zinc-600">Minimal job board (Phase 1).</p>
+      <a
+        className="text-sm font-medium text-blue-600 hover:underline"
+        href="/admin"
+      >
+        Go to admin import
+      </a>
       {jobs.length === 0 ? (
         <div className="rounded border border-dashed border-zinc-200 bg-zinc-50 p-6 text-zinc-600">
           No jobs yet. Run the crawler in Phase 2 to populate the database.

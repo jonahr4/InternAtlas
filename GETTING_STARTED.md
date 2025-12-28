@@ -40,13 +40,34 @@ npx prisma migrate dev --name init
 6) Replace the default Next.js homepage with the project placeholder:
 - Edit `app/src/app/page.tsx`
 
-7) Start the dev server:
+7) Build a company list (manual import):
+- Start the dev server
+- Visit `http://localhost:3000/admin`
+- Customize the Google query (location + role keywords)
+- Paste Google results into the textarea and click “Import boards”
+- Inspect stored companies:
+```bash
+npx prisma studio
+```
+
+8) Start the dev server:
 ```bash
 npm run dev
 ```
 
-8) Open the app:
+9) Open the app:
 - http://localhost:3000
+
+## Crawl jobs (from DB)
+After importing companies, run:
+```bash
+npm run crawl
+```
+
+Expected CLI summary:
+- Total jobs found
+- Total working links
+- Total broken links
 
 ## Next Step
 Continue with Phase 1 in `TODO.md` once the app runs.

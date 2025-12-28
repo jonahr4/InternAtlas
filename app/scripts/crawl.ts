@@ -1,11 +1,4 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-
-type Company = {
-  name: string;
-  platform: "GREENHOUSE" | "LEVER" | "WORKDAY" | "CUSTOM";
-  boardUrl: string;
-};
+import { prisma } from "../src/lib/prisma";
 
 type GreenhouseJob = {
   id: number;
@@ -17,16 +10,11 @@ type GreenhouseJob = {
   content?: string;
 };
 
-type NormalizedJob = {
-  companyName: string;
-  title: string;
-  location: string | null;
-  postedAt: string | null;
-  jobUrl: string;
-  descriptionText?: string | null;
+type Company = {
+  name: string;
+  platform: "GREENHOUSE" | "LEVER" | "WORKDAY" | "CUSTOM";
+  boardUrl: string;
 };
-
-const COMPANIES_PATH = path.join(process.cwd(), "data", "companies.json");
 
 function getGreenhouseSlug(boardUrl: string): string {
   const url = new URL(boardUrl);
@@ -65,8 +53,9 @@ function normalizeGreenhouseJob(
 }
 
 async function main() {
-  const raw = await fs.readFile(COMPANIES_PATH, "utf-8");
-  const companies = JSON.parse(raw) as Company[];
+  const companies = (await prisma.company.findMany({
+    select: { name: true, platform: true, boardUrl: true },
+  })) as Company[];
   const greenhouseCompanies = companies.filter(
     (company) => company.platform === "GREENHOUSE"
   );
@@ -76,12 +65,16 @@ async function main() {
     return;
   }
 
+  let totalJobs = 0;
+  let totalWorking = 0;
+  let totalBroken = 0;
+
   for (const company of greenhouseCompanies) {
     try {
       const jobs = await fetchGreenhouseJobs(company.boardUrl);
-      const normalized = jobs.map((job) =>
-        normalizeGreenhouseJob(company.name, job)
-      );
+      const normalized = jobs.map((job) => normalizeGreenhouseJob(company.name, job));
+      totalJobs += normalized.length;
+      totalWorking += 1;
 
       console.log(
         `${company.name}: ${normalized.length} jobs (sample: ${
@@ -90,9 +83,23 @@ async function main() {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      totalBroken += 1;
       console.error(`${company.name}: error - ${message}`);
     }
   }
+
+  console.log("");
+  console.log("Crawl summary");
+  console.log(`Total jobs found: ${totalJobs}`);
+  console.log(`Total working links: ${totalWorking}`);
+  console.log(`Total broken links: ${totalBroken}`);
 }
 
-main();
+main()
+  .catch((error) => {
+    console.error(`Crawler failed: ${error instanceof Error ? error.message : error}`);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

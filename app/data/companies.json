@@ -1,0 +1,27 @@
+[
+  {
+    "name": "Airbnb",
+    "platform": "GREENHOUSE",
+    "boardUrl": "https://boards.greenhouse.io/airbnb"
+  },
+  {
+    "name": "Coinbase",
+    "platform": "GREENHOUSE",
+    "boardUrl": "https://boards.greenhouse.io/coinbase"
+  },
+  {
+    "name": "Stripe",
+    "platform": "GREENHOUSE",
+    "boardUrl": "https://boards.greenhouse.io/stripe"
+  },
+  {
+    "name": "Notion",
+    "platform": "GREENHOUSE",
+    "boardUrl": "https://boards.greenhouse.io/notion"
+  },
+  {
+    "name": "Figma",
+    "platform": "GREENHOUSE",
+    "boardUrl": "https://boards.greenhouse.io/figma"
+  }
+]

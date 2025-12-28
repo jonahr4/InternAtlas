@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "crawl": "tsx scripts/crawl.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.17.1",
@@ -23,6 +24,7 @@
     "eslint-config-next": "16.1.1",
     "prisma": "^6.17.1",
     "tailwindcss": "^4",
+    "tsx": "^4.19.2",
     "typescript": "^5"
   }
 }

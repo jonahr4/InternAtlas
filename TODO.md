@@ -13,12 +13,13 @@
 - [x] Build minimal Job Board UI wired to `/api/jobs`
 
 ## Phase 2 - Ingestion MVP (jobs -> DB)
-- [ ] Add `data/companies.json` seed list
-- [ ] Create `scripts/crawl.ts` runner
+- [x] Add `data/companies.json` seed list
+- [x] Create `scripts/crawl.ts` runner
 - [ ] Implement first adapter (Greenhouse or Lever)
 - [ ] Normalize job fields into schema
 - [ ] Implement upsert + dedupe key strategy
 - [ ] Ingest 10+ companies on the same platform
+- [ ] Add a source list pipeline: start from careers list directories (careerslist.pages.dev, awesome-career-pages), extract career page URLs, and store them for later ingestion
 
 ## Phase 3 - Product MVP (filters + search)
 - [ ] Add Postgres full-text search (tsvector + GIN index)

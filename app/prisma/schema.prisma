@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LocationType {
+  REMOTE
+  HYBRID
+  ONSITE
+  UNKNOWN
+}
+
+enum EmploymentType {
+  INTERN
+  NEW_GRAD
+  FULL_TIME
+  UNKNOWN
+}
+
+enum SourcePlatform {
+  GREENHOUSE
+  LEVER
+  WORKDAY
+  CUSTOM
+}
+
+enum JobStatus {
+  ACTIVE
+  CLOSED
+  UNKNOWN
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  platform  SourcePlatform
+  boardUrl  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobs Job[]
+}
+
+model Job {
+  id               String         @id @default(cuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  title            String
+  location         String?
+  locationType     LocationType   @default(UNKNOWN)
+  employmentType   EmploymentType @default(UNKNOWN)
+  postedAt         DateTime?
+  jobUrl           String
+  applyUrl         String?
+  descriptionText  String?
+  requirementsText String?
+  sourcePlatform   SourcePlatform
+  rawPayload       Json?
+  externalId       String?
+  dedupeKey        String?
+  firstSeenAt      DateTime       @default(now())
+  lastSeenAt       DateTime       @default(now())
+  status           JobStatus      @default(ACTIVE)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([companyId])
+  @@unique([sourcePlatform, externalId])
+  @@unique([dedupeKey])
+}

@@ -1,5 +1,4 @@
 import { prisma } from "../src/lib/prisma";
-import { createInterface } from "node:readline";
 
 type GreenhouseJob = {
   id: number;
@@ -129,12 +128,6 @@ async function main() {
   const keyword = keywordArg
     ? keywordArg.replace("--keyword=", "").trim().toLowerCase()
     : "";
-  const cleanupArg = process.argv.find((arg) =>
-    arg.startsWith("--cleanup-broken=")
-  );
-  const cleanupMode = cleanupArg
-    ? cleanupArg.replace("--cleanup-broken=", "").trim().toLowerCase()
-    : "";
   const companies = (await prisma.company.findMany({
     select: { id: true, name: true, platform: true, boardUrl: true },
   })) as Company[];
@@ -149,8 +142,13 @@ async function main() {
   let totalCreated = 0;
   let totalCreatedFromExistingCompanies = 0;
   let totalCreatedFromNewCompanies = 0;
+  let totalNewCompanies = 0;
+  let totalExistingCompanies = 0;
   let totalWorking = 0;
   let totalBroken = 0;
+  const jobsFoundByPlatform = new Map<string, number>();
+  const jobsCreatedByPlatform = new Map<string, number>();
+  const companiesByPlatform = new Map<string, number>();
   const nameColumnWidth = Math.max(
     12,
     ...supportedCompanies.map((company) => company.name.length + 2)
@@ -165,8 +163,6 @@ async function main() {
       Math.max(1, atsColumnWidth - 3)
     )}Status  \t\tTotal Jobs  \t\tNew Jobs`
   );
-
-  const brokenCompanyIds = new Set<string>();
 
   for (const company of supportedCompanies) {
     try {
@@ -226,9 +222,17 @@ async function main() {
         existingIds.add(job.externalId);
         newJobsForCompany += 1;
         totalCreated += 1;
+        jobsCreatedByPlatform.set(
+          company.platform,
+          (jobsCreatedByPlatform.get(company.platform) ?? 0) + 1
+        );
       }
 
       totalJobs += normalized.length;
+      jobsFoundByPlatform.set(
+        company.platform,
+        (jobsFoundByPlatform.get(company.platform) ?? 0) + normalized.length
+      );
       totalWorking += 1;
 
       if (newJobsForCompany > 0) {
@@ -240,6 +244,15 @@ async function main() {
       }
 
       const status = isNewCompany ? "NEW" : "OLD";
+      if (isNewCompany) {
+        totalNewCompanies += 1;
+      } else {
+        totalExistingCompanies += 1;
+      }
+      companiesByPlatform.set(
+        company.platform,
+        (companiesByPlatform.get(company.platform) ?? 0) + 1
+      );
       const totalLabel = `\t${normalized.length}\tTotal Jobs`;
       const newLabel = `\t${newJobsForCompany}\tNew Jobs`;
       console.log(
@@ -250,7 +263,6 @@ async function main() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       totalBroken += 1;
-      brokenCompanyIds.add(company.id);
       console.error(`${company.name}: error - ${message}`);
     }
   }
@@ -260,52 +272,82 @@ async function main() {
 
   console.log("");
   console.log("Crawl summary");
-  console.log(`Total jobs found: ${totalJobs}`);
-  console.log(`Total jobs created: ${totalCreated}`);
   console.log(
-    `New jobs from existing companies: ${totalCreatedFromExistingCompanies}`
+    "+------------------------------+---------------------------+"
   );
-  console.log(`New jobs from new companies: ${totalCreatedFromNewCompanies}`);
-  console.log(`Total companies found: ${supportedCompanies.length}`);
-  console.log(`Total working links: ${totalWorking}`);
-  console.log(`Total broken links: ${totalBroken}`);
-  console.log(`Time taken: ${(durationMs / 1000).toFixed(2)}s`);
   console.log(
-    `Estimated time per job: ${avgMsPerJob}ms${totalJobs === 0 ? " (n/a)" : ""}`
+    `| Total companies found        | ${String(
+      supportedCompanies.length
+    ).padEnd(25)}|`
+  );
+  console.log(
+    `| New companies                | ${String(totalNewCompanies).padEnd(25)}|`
+  );
+  console.log(
+    `| Existing companies           | ${String(
+      totalExistingCompanies
+    ).padEnd(25)}|`
+  );
+  console.log(
+    "+------------------------------+---------------------------+"
+  );
+  console.log(
+    `| Total jobs found             | ${String(totalJobs).padEnd(25)}|`
+  );
+  console.log(
+    `| Total jobs created           | ${String(totalCreated).padEnd(25)}|`
+  );
+  console.log(
+    `| New jobs from existing co.   | ${String(
+      totalCreatedFromExistingCompanies
+    ).padEnd(25)}|`
+  );
+  console.log(
+    `| New jobs from new co.        | ${String(
+      totalCreatedFromNewCompanies
+    ).padEnd(25)}|`
+  );
+  console.log(
+    "+------------------------------+---------------------------+"
+  );
+  console.log(
+    `| Total working links          | ${String(totalWorking).padEnd(25)}|`
+  );
+  console.log(
+    `| Total broken links           | ${String(totalBroken).padEnd(25)}|`
+  );
+  console.log(
+    `| Time taken                   | ${`${(durationMs / 1000).toFixed(
+      2
+    )}s`.padEnd(25)}|`
+  );
+  console.log(
+    `| Estimated time per job       | ${`${avgMsPerJob}ms${
+      totalJobs === 0 ? " (n/a)" : ""
+    }`.padEnd(25)}|`
+  );
+  console.log(
+    "+------------------------------+---------------------------+"
   );
 
-  if (brokenCompanyIds.size > 0) {
-    let shouldCleanup = false;
-
-    if (cleanupMode === "y" || cleanupMode === "yes") {
-      shouldCleanup = true;
-    } else if (cleanupMode === "n" || cleanupMode === "no") {
-      shouldCleanup = false;
-    } else {
-      const readline = createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      });
-      shouldCleanup = await new Promise<boolean>((resolve) => {
-        readline.question(
-          `Remove ${brokenCompanyIds.size} companies with broken links? (y/n) `,
-          (answer) => {
-            readline.close();
-            resolve(answer.trim().toLowerCase().startsWith("y"));
-          }
-        );
-      });
-    }
-
-    if (shouldCleanup) {
-      await prisma.company.deleteMany({
-        where: { id: { in: Array.from(brokenCompanyIds) } },
-      });
+  if (jobsFoundByPlatform.size > 0) {
+    console.log("Jobs by ATS");
+    console.log("+------------------------------+---------------------------+");
+    const platforms = Array.from(jobsFoundByPlatform.keys()).sort();
+    for (const platform of platforms) {
+      const found = jobsFoundByPlatform.get(platform) ?? 0;
+      const created = jobsCreatedByPlatform.get(platform) ?? 0;
+      const companies = companiesByPlatform.get(platform) ?? 0;
+      const label = `${platform} (found/created/companies)`;
       console.log(
-        `Removed ${brokenCompanyIds.size} companies with broken links.`
+        `| ${label.padEnd(29)}| ${`${found}/${created}/${companies}`.padEnd(
+          25
+        )}|`
       );
     }
+    console.log("+------------------------------+---------------------------+");
   }
+
 }
 
 main()

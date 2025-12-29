@@ -66,12 +66,12 @@ export default function AdminPage() {
               onChange={(event) => setAts(event.target.value)}
             >
               <option value="GREENHOUSE">Greenhouse</option>
-              <option value="LEVER">Lever (to be implemented)</option>
+              <option value="LEVER">Lever</option>
               <option value="WORKDAY">Workday (to be implemented)</option>
               <option value="CUSTOM">Custom (to be implemented)</option>
             </select>
           </label>
-          {ats !== "GREENHOUSE" ? (
+          {ats === "WORKDAY" || ats === "CUSTOM" ? (
             <div className="text-xs text-amber-700">
               Selected ATS is not implemented yet.
             </div>

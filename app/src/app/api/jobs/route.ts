@@ -2,12 +2,128 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 
-export async function GET() {
-  const jobs = await prisma.job.findMany({
-    take: 25,
-    orderBy: { createdAt: "desc" },
-    include: { company: true },
-  });
+const DEFAULT_PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 100;
 
-  return NextResponse.json(jobs);
+function getStringArray(values: string[]): string[] {
+  return values
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function getTokens(input: string): string[] {
+  return input
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+
+  const q = searchParams.get("q")?.trim();
+  const title = searchParams.get("title")?.trim();
+  const location = searchParams.get("location")?.trim();
+  const employmentType = searchParams.get("employmentType")?.trim();
+  const locationType = searchParams.get("locationType")?.trim();
+  const postedAfter = searchParams.get("postedAfter")?.trim();
+  const sort = searchParams.get("sort")?.trim();
+  const sortDir = searchParams.get("sortDir")?.trim().toLowerCase();
+  const companyName = searchParams.get("companyName")?.trim();
+
+  const page = Math.max(1, Number.parseInt(searchParams.get("page") ?? "1", 10));
+  const pageSize = Math.min(
+    MAX_PAGE_SIZE,
+    Math.max(
+      1,
+      Number.parseInt(searchParams.get("pageSize") ?? `${DEFAULT_PAGE_SIZE}`, 10)
+    )
+  );
+
+  const companies = getStringArray(searchParams.getAll("company"));
+
+  const where: Record<string, unknown> = { AND: [] as unknown[] };
+  const and = where.AND as unknown[];
+
+  if (q) {
+    and.push({
+      OR: [
+        { title: { contains: q, mode: "insensitive" } },
+        { descriptionText: { contains: q, mode: "insensitive" } },
+        { requirementsText: { contains: q, mode: "insensitive" } },
+      ],
+    });
+  }
+
+  if (title) {
+    const tokens = getTokens(title);
+    if (tokens.length > 0) {
+      and.push({
+        AND: tokens.map((token) => ({
+          title: { contains: token, mode: "insensitive" },
+        })),
+      });
+    }
+  }
+
+  if (location) {
+    and.push({ location: { contains: location, mode: "insensitive" } });
+  }
+
+  if (employmentType) {
+    and.push({ employmentType });
+  }
+
+  if (locationType) {
+    and.push({ locationType });
+  }
+
+  if (postedAfter) {
+    const date = new Date(postedAfter);
+    if (!Number.isNaN(date.getTime())) {
+      and.push({ postedAt: { gte: date } });
+    }
+  }
+
+  if (companies.length > 0) {
+    and.push({ company: { name: { in: companies } } });
+  }
+
+  if (companyName) {
+    and.push({ company: { name: { contains: companyName, mode: "insensitive" } } });
+  }
+
+  const direction = sortDir === "asc" ? "asc" : "desc";
+  const orderBy =
+    sort === "posted_at"
+      ? { postedAt: direction as const }
+      : sort === "last_seen_at"
+      ? { lastSeenAt: direction as const }
+      : sort === "title"
+      ? { title: direction as const }
+      : sort === "created_at"
+      ? { createdAt: direction as const }
+      : sort === "company"
+      ? { company: { name: direction as const } }
+      : { company: { name: "asc" as const } };
+
+  const whereClause = and.length > 0 ? where : undefined;
+  const [jobs, total] = await Promise.all([
+    prisma.job.findMany({
+      where: whereClause,
+      take: pageSize,
+      skip: (page - 1) * pageSize,
+      orderBy,
+      include: { company: true },
+    }),
+    prisma.job.count({ where: whereClause }),
+  ]);
+
+  return NextResponse.json({
+    items: jobs,
+    total,
+    page,
+    pageSize,
+  });
 }

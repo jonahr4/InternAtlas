@@ -11,6 +11,7 @@ type GreenhouseJob = {
 };
 
 type Company = {
+  id: string;
   name: string;
   platform: "GREENHOUSE" | "LEVER" | "WORKDAY" | "CUSTOM";
   boardUrl: string;
@@ -70,7 +71,7 @@ async function main() {
     ? keywordArg.replace("--keyword=", "").trim().toLowerCase()
     : "";
   const companies = (await prisma.company.findMany({
-    select: { name: true, platform: true, boardUrl: true },
+    select: { id: true, name: true, platform: true, boardUrl: true },
   })) as Company[];
   const greenhouseCompanies = companies.filter(
     (company) => company.platform === "GREENHOUSE"
@@ -83,9 +84,16 @@ async function main() {
 
   let totalJobs = 0;
   let totalCreated = 0;
-  let totalUpdated = 0;
   let totalWorking = 0;
   let totalBroken = 0;
+  const nameColumnWidth = Math.max(
+    12,
+    ...greenhouseCompanies.map((company) => company.name.length + 2)
+  );
+
+  console.log(
+    `${"Company".padEnd(nameColumnWidth)}Status  Total Jobs   New Jobs`
+  );
 
   for (const company of greenhouseCompanies) {
     try {
@@ -101,35 +109,26 @@ async function main() {
         });
       }
 
-      for (const job of normalized) {
-        const existing = await prisma.job.findUnique({
-          where: {
-            sourcePlatform_externalId: {
-              sourcePlatform: "GREENHOUSE",
-              externalId: job.externalId,
-            },
-          },
-          select: { id: true },
-        });
+      const existingJobs = await prisma.job.findMany({
+        where: { companyId: company.id, sourcePlatform: "GREENHOUSE" },
+        select: { externalId: true },
+      });
+      const existingIds = new Set(
+        existingJobs
+          .map((job) => job.externalId)
+          .filter((id): id is string => Boolean(id))
+      );
+      const isNewCompany = existingIds.size === 0;
+      let newJobsForCompany = 0;
 
-        await prisma.job.upsert({
-          where: {
-            sourcePlatform_externalId: {
-              sourcePlatform: "GREENHOUSE",
-              externalId: job.externalId,
-            },
-          },
-          update: {
-            title: job.title,
-            location: job.location,
-            jobUrl: job.jobUrl,
-            applyUrl: job.jobUrl,
-            descriptionText: job.descriptionText,
-            lastSeenAt: new Date(),
-            status: "ACTIVE",
-          },
-          create: {
-            company: { connect: { name: job.companyName } },
+      for (const job of normalized) {
+        if (existingIds.has(job.externalId)) {
+          continue;
+        }
+
+        await prisma.job.create({
+          data: {
+            companyId: company.id,
             title: job.title,
             location: job.location,
             postedAt: job.postedAt ? new Date(job.postedAt) : null,
@@ -142,20 +141,19 @@ async function main() {
           },
         });
 
-        if (existing) {
-          totalUpdated += 1;
-        } else {
-          totalCreated += 1;
-        }
+        existingIds.add(job.externalId);
+        newJobsForCompany += 1;
+        totalCreated += 1;
       }
 
       totalJobs += normalized.length;
       totalWorking += 1;
 
+      const status = isNewCompany ? "NEW" : "OLD";
+      const totalLabel = `\t${normalized.length}\tTotal Jobs`;
+      const newLabel = `\t${newJobsForCompany}\tNew Jobs`;
       console.log(
-        `${company.name}: ${normalized.length} jobs (sample: ${
-          normalized[0]?.title ?? "none"
-        })`
+        `${company.name.padEnd(nameColumnWidth)}${status.padEnd(7)}${totalLabel.padEnd(14)}${newLabel}`
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -171,7 +169,6 @@ async function main() {
   console.log("Crawl summary");
   console.log(`Total jobs found: ${totalJobs}`);
   console.log(`Total jobs created: ${totalCreated}`);
-  console.log(`Total jobs updated: ${totalUpdated}`);
   console.log(`Total companies found: ${greenhouseCompanies.length}`);
   console.log(`Total working links: ${totalWorking}`);
   console.log(`Total broken links: ${totalBroken}`);

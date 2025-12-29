@@ -23,10 +23,10 @@
 
 ## Phase 3 - Product MVP (filters + search)
 - [ ] Add Postgres full-text search (tsvector + GIN index)
-- [ ] Add API filters (company, location, type, date)
-- [ ] Add sorting + pagination in API
-- [ ] Hook UI filters + search to API
-- [ ] Add job detail view
+- [x] Add API filters (company, location, type, date)
+- [x] Add sorting + pagination in API
+- [x] Hook UI filters + search to API
+- [x] Add job detail view
 
 ## Phase 4 - Polish + Stretch
 - [ ] Add crawl run logging (counts, duration, errors)

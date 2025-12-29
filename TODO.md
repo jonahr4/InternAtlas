@@ -15,7 +15,7 @@
 ## Phase 2 - Ingestion MVP (jobs -> DB)
 - [x] Add `data/companies.json` seed list
 - [x] Create `scripts/crawl.ts` runner
-- [ ] Add manual company import UI (paste Greenhouse URLs -> companies table)
+- [x] Add manual company import UI (paste Greenhouse URLs -> companies table)
 - [ ] Implement first adapter (Greenhouse or Lever)
 - [ ] Normalize job fields into schema
 - [ ] Implement upsert + dedupe key strategy

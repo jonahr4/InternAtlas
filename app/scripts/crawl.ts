@@ -1,3 +1,5 @@
+import readline from "node:readline/promises";
+
 import { prisma } from "../src/lib/prisma";
 
 type GreenhouseJob = {
@@ -53,6 +55,7 @@ function normalizeGreenhouseJob(
 }
 
 async function main() {
+  const startedAt = Date.now();
   const companies = (await prisma.company.findMany({
     select: { name: true, platform: true, boardUrl: true },
   })) as Company[];
@@ -68,6 +71,7 @@ async function main() {
   let totalJobs = 0;
   let totalWorking = 0;
   let totalBroken = 0;
+  const brokenCompanies: string[] = [];
 
   for (const company of greenhouseCompanies) {
     try {
@@ -84,15 +88,42 @@ async function main() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       totalBroken += 1;
+      brokenCompanies.push(company.name);
       console.error(`${company.name}: error - ${message}`);
     }
   }
 
+  const durationMs = Date.now() - startedAt;
+  const avgMsPerCompany = totalJobs > 0 ? Math.round(durationMs / (totalBroken + totalWorking)) : 0;
+
   console.log("");
   console.log("Crawl summary");
   console.log(`Total jobs found: ${totalJobs}`);
+  console.log(`Total companies found: ${greenhouseCompanies.length}`);
   console.log(`Total working links: ${totalWorking}`);
   console.log(`Total broken links: ${totalBroken}`);
+  console.log(`Time taken: ${(durationMs / 1000).toFixed(2)}s`);
+  console.log(
+    `Estimated time per company: ${avgMsPerCompany}ms${totalJobs === 0 ? " (n/a)" : ""}`
+  );
+
+  if (brokenCompanies.length > 0) {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    const answer = await rl.question(
+      "Remove broken companies from DB? (y/N) "
+    );
+    rl.close();
+
+    if (answer.trim().toLowerCase() === "y") {
+      await prisma.company.deleteMany({
+        where: { name: { in: brokenCompanies } },
+      });
+      console.log(`Removed ${brokenCompanies.length} broken companies.`);
+    }
+  }
 }
 
 main()

@@ -42,9 +42,16 @@ npx prisma migrate dev --name init
 
 7) Build a company list (manual import):
 - Start the dev server
+```bash
+npm run dev
+```
 - Visit `http://localhost:3000/admin`
 - Customize the Google query (location + role keywords)
 - Paste Google results into the textarea and click “Import boards”
+- You can also import from a GitHub job board table:
+  - Visit https://github.com/SimplifyJobs/Summer2026-Internships
+  - Open DevTools, copy the raw HTML for the `<table>` element
+  - Paste into the “Job board HTML” tab and import
 - Inspect stored companies:
 ```bash
 npx prisma studio

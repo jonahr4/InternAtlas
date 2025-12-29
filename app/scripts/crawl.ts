@@ -1,4 +1,5 @@
 import { prisma } from "../src/lib/prisma";
+import { createInterface } from "node:readline";
 
 type GreenhouseJob = {
   id: number;
@@ -70,6 +71,12 @@ async function main() {
   const keyword = keywordArg
     ? keywordArg.replace("--keyword=", "").trim().toLowerCase()
     : "";
+  const cleanupArg = process.argv.find((arg) =>
+    arg.startsWith("--cleanup-broken=")
+  );
+  const cleanupMode = cleanupArg
+    ? cleanupArg.replace("--cleanup-broken=", "").trim().toLowerCase()
+    : "";
   const companies = (await prisma.company.findMany({
     select: { id: true, name: true, platform: true, boardUrl: true },
   })) as Company[];
@@ -84,16 +91,26 @@ async function main() {
 
   let totalJobs = 0;
   let totalCreated = 0;
+  let totalCreatedFromExistingCompanies = 0;
+  let totalCreatedFromNewCompanies = 0;
   let totalWorking = 0;
   let totalBroken = 0;
   const nameColumnWidth = Math.max(
     12,
     ...greenhouseCompanies.map((company) => company.name.length + 2)
   );
+  const atsColumnWidth = Math.max(
+    5,
+    ...greenhouseCompanies.map((company) => company.platform.length + 2)
+  );
 
   console.log(
-    `${"Company".padEnd(nameColumnWidth)}Status  \t\tTotal Jobs  \t\tNew Jobs`
+    `${"Company".padEnd(nameColumnWidth)}ATS${" ".repeat(
+      Math.max(1, atsColumnWidth - 3)
+    )}Status  \t\tTotal Jobs  \t\tNew Jobs`
   );
+
+  const brokenCompanyIds = new Set<string>();
 
   for (const company of greenhouseCompanies) {
     try {
@@ -149,15 +166,26 @@ async function main() {
       totalJobs += normalized.length;
       totalWorking += 1;
 
+      if (newJobsForCompany > 0) {
+        if (isNewCompany) {
+          totalCreatedFromNewCompanies += newJobsForCompany;
+        } else {
+          totalCreatedFromExistingCompanies += newJobsForCompany;
+        }
+      }
+
       const status = isNewCompany ? "NEW" : "OLD";
       const totalLabel = `\t${normalized.length}\tTotal Jobs`;
       const newLabel = `\t${newJobsForCompany}\tNew Jobs`;
       console.log(
-        `${company.name.padEnd(nameColumnWidth)}${status.padEnd(7)}${totalLabel.padEnd(14)}${newLabel}`
+        `${company.name.padEnd(nameColumnWidth)}${company.platform.padEnd(
+          atsColumnWidth
+        )}${status.padEnd(7)}${totalLabel.padEnd(14)}${newLabel}`
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       totalBroken += 1;
+      brokenCompanyIds.add(company.id);
       console.error(`${company.name}: error - ${message}`);
     }
   }
@@ -169,6 +197,10 @@ async function main() {
   console.log("Crawl summary");
   console.log(`Total jobs found: ${totalJobs}`);
   console.log(`Total jobs created: ${totalCreated}`);
+  console.log(
+    `New jobs from existing companies: ${totalCreatedFromExistingCompanies}`
+  );
+  console.log(`New jobs from new companies: ${totalCreatedFromNewCompanies}`);
   console.log(`Total companies found: ${greenhouseCompanies.length}`);
   console.log(`Total working links: ${totalWorking}`);
   console.log(`Total broken links: ${totalBroken}`);
@@ -176,6 +208,39 @@ async function main() {
   console.log(
     `Estimated time per job: ${avgMsPerJob}ms${totalJobs === 0 ? " (n/a)" : ""}`
   );
+
+  if (brokenCompanyIds.size > 0) {
+    let shouldCleanup = false;
+
+    if (cleanupMode === "y" || cleanupMode === "yes") {
+      shouldCleanup = true;
+    } else if (cleanupMode === "n" || cleanupMode === "no") {
+      shouldCleanup = false;
+    } else {
+      const readline = createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+      shouldCleanup = await new Promise<boolean>((resolve) => {
+        readline.question(
+          `Remove ${brokenCompanyIds.size} companies with broken links? (y/n) `,
+          (answer) => {
+            readline.close();
+            resolve(answer.trim().toLowerCase().startsWith("y"));
+          }
+        );
+      });
+    }
+
+    if (shouldCleanup) {
+      await prisma.company.deleteMany({
+        where: { id: { in: Array.from(brokenCompanyIds) } },
+      });
+      console.log(
+        `Removed ${brokenCompanyIds.size} companies with broken links.`
+      );
+    }
+  }
 }
 
 main()

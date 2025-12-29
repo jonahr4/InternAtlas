@@ -71,6 +71,16 @@ After importing companies, run:
 npm run crawl
 ```
 
+To filter by keyword (example: only “intern” roles):
+```bash
+npm run crawl -- --keyword=intern
+```
+
+To clear all jobs (keeps companies):
+```bash
+npm run jobs:clear
+```
+
 Expected CLI summary:
 - Total jobs found
 - Total working links

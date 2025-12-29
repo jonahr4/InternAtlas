@@ -16,11 +16,10 @@
 - [x] Add `data/companies.json` seed list
 - [x] Create `scripts/crawl.ts` runner
 - [x] Add manual company import UI (paste Greenhouse URLs -> companies table)
-- [ ] Implement first adapter (Greenhouse or Lever)
-- [ ] Normalize job fields into schema
-- [ ] Implement upsert + dedupe key strategy
-- [ ] Ingest 10+ companies on the same platform
-- [ ] Add a source list pipeline: start from careers list directories (careerslist.pages.dev, awesome-career-pages), extract career page URLs, and store them for later ingestion
+- [x] Implement first adapter (Greenhouse or Lever)
+- [x] Normalize job fields into schema
+- [x] Implement upsert + dedupe key strategy
+- [x] Ingest 10+ companies on the same platform
 
 ## Phase 3 - Product MVP (filters + search)
 - [ ] Add Postgres full-text search (tsvector + GIN index)

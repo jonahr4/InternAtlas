@@ -1,5 +1,3 @@
-import readline from "node:readline/promises";
-
 import { prisma } from "../src/lib/prisma";
 
 type GreenhouseJob = {
@@ -16,6 +14,16 @@ type Company = {
   name: string;
   platform: "GREENHOUSE" | "LEVER" | "WORKDAY" | "CUSTOM";
   boardUrl: string;
+};
+
+type NormalizedJob = {
+  companyName: string;
+  externalId: string;
+  title: string;
+  location: string | null;
+  postedAt: string | null;
+  jobUrl: string;
+  descriptionText?: string | null;
 };
 
 function getGreenhouseSlug(boardUrl: string): string {
@@ -46,6 +54,7 @@ function normalizeGreenhouseJob(
 ): NormalizedJob {
   return {
     companyName,
+    externalId: String(job.id),
     title: job.title,
     location: job.location?.name ?? null,
     postedAt: job.created_at ?? null,
@@ -56,6 +65,10 @@ function normalizeGreenhouseJob(
 
 async function main() {
   const startedAt = Date.now();
+  const keywordArg = process.argv.find((arg) => arg.startsWith("--keyword="));
+  const keyword = keywordArg
+    ? keywordArg.replace("--keyword=", "").trim().toLowerCase()
+    : "";
   const companies = (await prisma.company.findMany({
     select: { name: true, platform: true, boardUrl: true },
   })) as Company[];
@@ -69,14 +82,73 @@ async function main() {
   }
 
   let totalJobs = 0;
+  let totalCreated = 0;
+  let totalUpdated = 0;
   let totalWorking = 0;
   let totalBroken = 0;
-  const brokenCompanies: string[] = [];
 
   for (const company of greenhouseCompanies) {
     try {
       const jobs = await fetchGreenhouseJobs(company.boardUrl);
-      const normalized = jobs.map((job) => normalizeGreenhouseJob(company.name, job));
+      let normalized = jobs.map((job) =>
+        normalizeGreenhouseJob(company.name, job)
+      );
+
+      if (keyword) {
+        normalized = normalized.filter((job) => {
+          const haystack = `${job.title} ${job.descriptionText ?? ""}`.toLowerCase();
+          return haystack.includes(keyword);
+        });
+      }
+
+      for (const job of normalized) {
+        const existing = await prisma.job.findUnique({
+          where: {
+            sourcePlatform_externalId: {
+              sourcePlatform: "GREENHOUSE",
+              externalId: job.externalId,
+            },
+          },
+          select: { id: true },
+        });
+
+        await prisma.job.upsert({
+          where: {
+            sourcePlatform_externalId: {
+              sourcePlatform: "GREENHOUSE",
+              externalId: job.externalId,
+            },
+          },
+          update: {
+            title: job.title,
+            location: job.location,
+            jobUrl: job.jobUrl,
+            applyUrl: job.jobUrl,
+            descriptionText: job.descriptionText,
+            lastSeenAt: new Date(),
+            status: "ACTIVE",
+          },
+          create: {
+            company: { connect: { name: job.companyName } },
+            title: job.title,
+            location: job.location,
+            postedAt: job.postedAt ? new Date(job.postedAt) : null,
+            jobUrl: job.jobUrl,
+            applyUrl: job.jobUrl,
+            descriptionText: job.descriptionText,
+            sourcePlatform: "GREENHOUSE",
+            externalId: job.externalId,
+            status: "ACTIVE",
+          },
+        });
+
+        if (existing) {
+          totalUpdated += 1;
+        } else {
+          totalCreated += 1;
+        }
+      }
+
       totalJobs += normalized.length;
       totalWorking += 1;
 
@@ -88,42 +160,25 @@ async function main() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       totalBroken += 1;
-      brokenCompanies.push(company.name);
       console.error(`${company.name}: error - ${message}`);
     }
   }
 
   const durationMs = Date.now() - startedAt;
-  const avgMsPerCompany = totalJobs > 0 ? Math.round(durationMs / (totalBroken + totalWorking)) : 0;
+  const avgMsPerJob = totalJobs > 0 ? Math.round(durationMs / totalJobs) : 0;
 
   console.log("");
   console.log("Crawl summary");
   console.log(`Total jobs found: ${totalJobs}`);
+  console.log(`Total jobs created: ${totalCreated}`);
+  console.log(`Total jobs updated: ${totalUpdated}`);
   console.log(`Total companies found: ${greenhouseCompanies.length}`);
   console.log(`Total working links: ${totalWorking}`);
   console.log(`Total broken links: ${totalBroken}`);
   console.log(`Time taken: ${(durationMs / 1000).toFixed(2)}s`);
   console.log(
-    `Estimated time per company: ${avgMsPerCompany}ms${totalJobs === 0 ? " (n/a)" : ""}`
+    `Estimated time per job: ${avgMsPerJob}ms${totalJobs === 0 ? " (n/a)" : ""}`
   );
-
-  if (brokenCompanies.length > 0) {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-    const answer = await rl.question(
-      "Remove broken companies from DB? (y/N) "
-    );
-    rl.close();
-
-    if (answer.trim().toLowerCase() === "y") {
-      await prisma.company.deleteMany({
-        where: { name: { in: brokenCompanies } },
-      });
-      console.log(`Removed ${brokenCompanies.length} broken companies.`);
-    }
-  }
 }
 
 main()

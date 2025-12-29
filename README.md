@@ -4,7 +4,7 @@
 ---
 
 ## Summary
-InternAtlas ingests job listings from a curated set of company career sites / ATS providers (starting with **Greenhouse** and **Lever**), normalizes them into a **Postgres database**, and serves a **hosted job board** with fast **search + filters**.
+InternAtlas ingests job listings from a curated set of company career sites / ATS providers (starting with **Greenhouse**), normalizes them into a **Postgres database**, and serves a **hosted job board** with fast **search + filters**.
 
 This project is intentionally scoped for a **2‑week intensive build**:
 - **Week 1:** working product (MVP: job board + search backed by DB)
@@ -185,19 +185,20 @@ MVP target:
 ```
 /internatlas
   /app                 # Next.js (UI + API)
-  /scripts
-    crawl.ts            # "npm run crawl" entrypoint
-  /prisma
-    schema.prisma
-  /data
-    companies.json      # seed list of companies/sources
+    /data
+      companies.json   # optional seed list
+    /prisma
+      schema.prisma
+    /scripts
+      crawl.ts         # "npm run crawl" entrypoint
+      clear-jobs.ts    # "npm run jobs:clear"
 ```
 
 ---
 
 ## Configuration
-### `data/companies.json` (example)
-Keep it small and curated.
+### `data/companies.json` (optional seed)
+You can seed a few companies here, but the primary workflow is the admin import UI.
 
 ```json
 [
@@ -262,22 +263,22 @@ Triggers a crawl run (guard with a simple secret header).
 > The phases are designed so you always have something demoable and you never get stuck polishing without shipping.
 
 ### Phase 1 — Foundation (DB + app skeleton)
-- [ ] Create Next.js app + TypeScript setup
-- [ ] Spin up local Postgres (Docker) and connect via `DATABASE_URL`
-- [ ] Define Prisma schema: `companies`, `jobs`, *(optional)* `crawl_runs`
-- [ ] Build minimal UI: Job Board page with mock layout
-- [ ] Implement `GET /api/jobs` returning DB rows (even if empty)
+- [x] Create Next.js app + TypeScript setup
+- [x] Spin up local Postgres (Docker) and connect via `DATABASE_URL`
+- [x] Define Prisma schema: `companies`, `jobs`, *(optional)* `crawl_runs`
+- [x] Build minimal UI: Job Board page with mock layout
+- [x] Implement `GET /api/jobs` returning DB rows (even if empty)
 
 **Exit criteria:** app runs locally, UI loads, API hits DB.
 
 ---
 
 ### Phase 2 — Ingestion MVP (jobs → DB)
-- [ ] Implement `scripts/crawl.ts` runner (manual trigger)
-- [ ] Build `GreenhouseAdapter` OR `LeverAdapter` (choose one first)
-- [ ] Normalize job fields into your schema (title/location/urls/description/etc.)
-- [ ] Implement upsert + dedupe key strategy
-- [ ] Load 10+ companies that use the same platform and ingest real jobs
+- [x] Implement `scripts/crawl.ts` runner (manual trigger)
+- [x] Build `GreenhouseAdapter` (first adapter)
+- [x] Normalize job fields into your schema (title/location/urls/description/etc.)
+- [x] Implement upsert + dedupe key strategy
+- [x] Load 10+ companies that use the same platform and ingest real jobs
 
 **Exit criteria:** running `npm run crawl` populates DB with real listings.
 
@@ -364,3 +365,13 @@ These numbers are what turn “project” into “resume signal.”
 ---
 
 <!-- Context: this project plan is designed to strengthen your internship resume positioning. :contentReference[oaicite:0]{index=0} -->
+### Admin import workflow (current)
+Use `http://localhost:3000/admin` to build the company list:
+- Paste Google results for Greenhouse boards
+- Or paste raw HTML from a GitHub job board table (see Getting Started)
+- Companies are stored in Postgres (view with Prisma Studio)
+
+### Crawl commands (current)
+- Crawl all jobs: `npm run crawl`
+- Crawl with a keyword filter: `npm run crawl -- --keyword=intern`
+- Clear all jobs (keeps companies): `npm run jobs:clear`

@@ -108,12 +108,20 @@ export default function AdminPage() {
           <div>
             <div className="font-medium text-zinc-900">Google query</div>
             <div className="mt-1 space-y-2">
-              <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
-                {`site:boards.greenhouse.io ${location} intext:"apply" (intext:"${roleA}" OR intext:"${roleB}")`}
-              </div>
-              <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
-                {`inurl:"job-boards.greenhouse.io/embed/job_app?for=" "${roleB}"`}
-              </div>
+              {ats === "LEVER" ? (
+                <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
+                  {`site:jobs.lever.co ${location} intext:"apply" (intext:"${roleA}" OR intext:"${roleB}")`}
+                </div>
+              ) : (
+                <>
+                  <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
+                    {`site:boards.greenhouse.io ${location} intext:"apply" (intext:"${roleA}" OR intext:"${roleB}")`}
+                  </div>
+                  <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
+                    {`inurl:"job-boards.greenhouse.io/embed/job_app?for=" "${roleB}"`}
+                  </div>
+                </>
+              )}
             </div>
           </div>
           <div className="text-xs text-zinc-600">
@@ -153,9 +161,37 @@ export default function AdminPage() {
           </div>
         ) : (
           <div className="mt-2 text-xs text-zinc-600">
-            Go to https://github.com/SimplifyJobs/Summer2026-Internships, open
-            the table in DevTools, and paste the raw HTML for the{" "}
-            <code>&lt;table&gt;</code> element here.
+            Sources to grab table HTML:
+            <div className="mt-1 space-y-1">
+              <a
+                className="block text-blue-600 hover:underline"
+                href="https://github.com/SimplifyJobs/Summer2026-Internships"
+                target="_blank"
+                rel="noreferrer"
+              >
+                https://github.com/SimplifyJobs/Summer2026-Internships
+              </a>
+              <a
+                className="block text-blue-600 hover:underline"
+                href="https://github.com/j-delaney/easy-application?tab=readme-ov-file"
+                target="_blank"
+                rel="noreferrer"
+              >
+                https://github.com/j-delaney/easy-application?tab=readme-ov-file
+              </a>
+              <a
+                className="block text-blue-600 hover:underline"
+                href="https://github.com/SimplifyJobs/New-Grad-Positions"
+                target="_blank"
+                rel="noreferrer"
+              >
+                https://github.com/SimplifyJobs/New-Grad-Positions
+              </a>
+            </div>
+            <div className="mt-2">
+              Open the table in DevTools and paste the raw HTML for the{" "}
+              <code>&lt;table&gt;</code> element here.
+            </div>
           </div>
         )}
       </section>

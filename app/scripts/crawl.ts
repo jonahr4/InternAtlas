@@ -11,6 +11,20 @@ type GreenhouseJob = {
   content?: string;
 };
 
+type LeverJob = {
+  id: string;
+  text: string;
+  hostedUrl?: string;
+  applyUrl?: string;
+  createdAt?: number;
+  description?: string;
+  categories?: {
+    location?: string;
+    team?: string;
+    commitment?: string;
+  };
+};
+
 type Company = {
   id: string;
   name: string;
@@ -65,6 +79,50 @@ function normalizeGreenhouseJob(
   };
 }
 
+function getLeverSlug(boardUrl: string): string {
+  const url = new URL(boardUrl);
+  const parts = url.pathname.split("/").filter(Boolean);
+  if (parts.length === 0) {
+    throw new Error(`Invalid Lever board URL: ${boardUrl}`);
+  }
+  return parts[0];
+}
+
+async function fetchLeverJobs(boardUrl: string): Promise<LeverJob[]> {
+  const slug = getLeverSlug(boardUrl);
+  const apiUrl = `https://api.lever.co/v0/postings/${slug}?mode=json`;
+  const res = await fetch(apiUrl);
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch ${apiUrl}: ${res.status}`);
+  }
+
+  const data = (await res.json()) as LeverJob[];
+  return data ?? [];
+}
+
+function normalizeLeverJob(companyName: string, job: LeverJob): NormalizedJob {
+  const postedAt =
+    typeof job.createdAt === "number"
+      ? new Date(job.createdAt).toISOString()
+      : null;
+  return {
+    companyName,
+    externalId: job.id,
+    title: job.text,
+    location: job.categories?.location ?? null,
+    postedAt,
+    jobUrl: job.hostedUrl ?? job.applyUrl ?? "",
+    descriptionText: job.description ?? null,
+  };
+}
+
+function getSupportedCompanies(companies: Company[]): Company[] {
+  return companies.filter(
+    (company) => company.platform === "GREENHOUSE" || company.platform === "LEVER"
+  );
+}
+
 async function main() {
   const startedAt = Date.now();
   const keywordArg = process.argv.find((arg) => arg.startsWith("--keyword="));
@@ -80,12 +138,10 @@ async function main() {
   const companies = (await prisma.company.findMany({
     select: { id: true, name: true, platform: true, boardUrl: true },
   })) as Company[];
-  const greenhouseCompanies = companies.filter(
-    (company) => company.platform === "GREENHOUSE"
-  );
+  const supportedCompanies = getSupportedCompanies(companies);
 
-  if (greenhouseCompanies.length === 0) {
-    console.log("No Greenhouse companies found.");
+  if (supportedCompanies.length === 0) {
+    console.log("No Greenhouse or Lever companies found.");
     return;
   }
 
@@ -97,11 +153,11 @@ async function main() {
   let totalBroken = 0;
   const nameColumnWidth = Math.max(
     12,
-    ...greenhouseCompanies.map((company) => company.name.length + 2)
+    ...supportedCompanies.map((company) => company.name.length + 2)
   );
   const atsColumnWidth = Math.max(
     5,
-    ...greenhouseCompanies.map((company) => company.platform.length + 2)
+    ...supportedCompanies.map((company) => company.platform.length + 2)
   );
 
   console.log(
@@ -112,12 +168,21 @@ async function main() {
 
   const brokenCompanyIds = new Set<string>();
 
-  for (const company of greenhouseCompanies) {
+  for (const company of supportedCompanies) {
     try {
-      const jobs = await fetchGreenhouseJobs(company.boardUrl);
-      let normalized = jobs.map((job) =>
-        normalizeGreenhouseJob(company.name, job)
-      );
+      let normalized: NormalizedJob[] = [];
+      if (company.platform === "GREENHOUSE") {
+        const jobs = await fetchGreenhouseJobs(company.boardUrl);
+        normalized = jobs.map((job) => normalizeGreenhouseJob(company.name, job));
+      } else if (company.platform === "LEVER") {
+        const jobs = await fetchLeverJobs(company.boardUrl);
+        normalized = jobs
+          .map((job) => normalizeLeverJob(company.name, job))
+          .filter((job) => job.jobUrl);
+      } else {
+        console.log(`${company.name}: unsupported ATS (${company.platform})`);
+        continue;
+      }
 
       if (keyword) {
         normalized = normalized.filter((job) => {
@@ -127,7 +192,7 @@ async function main() {
       }
 
       const existingJobs = await prisma.job.findMany({
-        where: { companyId: company.id, sourcePlatform: "GREENHOUSE" },
+        where: { companyId: company.id, sourcePlatform: company.platform },
         select: { externalId: true },
       });
       const existingIds = new Set(
@@ -152,7 +217,7 @@ async function main() {
             jobUrl: job.jobUrl,
             applyUrl: job.jobUrl,
             descriptionText: job.descriptionText,
-            sourcePlatform: "GREENHOUSE",
+            sourcePlatform: company.platform,
             externalId: job.externalId,
             status: "ACTIVE",
           },
@@ -201,7 +266,7 @@ async function main() {
     `New jobs from existing companies: ${totalCreatedFromExistingCompanies}`
   );
   console.log(`New jobs from new companies: ${totalCreatedFromNewCompanies}`);
-  console.log(`Total companies found: ${greenhouseCompanies.length}`);
+  console.log(`Total companies found: ${supportedCompanies.length}`);
   console.log(`Total working links: ${totalWorking}`);
   console.log(`Total broken links: ${totalBroken}`);
   console.log(`Time taken: ${(durationMs / 1000).toFixed(2)}s`);

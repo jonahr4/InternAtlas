@@ -108,6 +108,49 @@ function extractGreenhouseSlugs(input: string): string[] {
     });
 }
 
+function extractLeverSlugs(input: string): string[] {
+  const normalizedInput = input.replace(/&amp;/g, "&");
+  const slugs = new Set<string>();
+  const urlMatches = normalizedInput.match(/https?:\/\/[^\s]+/g) ?? [];
+
+  for (const rawUrl of urlMatches) {
+    try {
+      const url = new URL(rawUrl);
+      if (url.hostname !== "jobs.lever.co") {
+        continue;
+      }
+      const parts = url.pathname.split("/").filter(Boolean);
+      if (parts.length === 0) {
+        continue;
+      }
+      slugs.add(parts[0].toLowerCase());
+    } catch {
+      continue;
+    }
+  }
+
+  const textMatches =
+    normalizedInput.match(/jobs\.lever\.co\s*[^a-z0-9]+([a-z0-9_-]+)/gi) ?? [];
+
+  for (const match of textMatches) {
+    const slugMatch = match.match(/([a-z0-9_-]+)$/i);
+    if (slugMatch) {
+      slugs.add(slugMatch[1].toLowerCase());
+    }
+  }
+
+  return Array.from(slugs)
+    .map((slug) => {
+      try {
+        return decodeURIComponent(slug);
+      } catch {
+        return slug;
+      }
+    })
+    .map((slug) => slug.replace(/["'<>%]+/g, "").trim())
+    .filter((slug) => slug && /^[a-z0-9_-]+$/.test(slug));
+}
+
 function nameFromSlug(slug: string): string {
   return slug
     .replace(/[-_]+/g, " ")
@@ -119,16 +162,6 @@ export async function POST(request: Request) {
   const input = body.urls?.trim() ?? "";
   const method = body.method ?? "google";
   const ats = body.ats ?? "GREENHOUSE";
-
-  if (ats !== "GREENHOUSE") {
-    return NextResponse.json({
-      total: 0,
-      added: 0,
-      updated: 0,
-      skipped: 0,
-      message: "Selected ATS is not implemented yet.",
-    });
-  }
 
   if (!input) {
     return NextResponse.json({
@@ -143,14 +176,18 @@ export async function POST(request: Request) {
     });
   }
 
-  const slugs = extractGreenhouseSlugs(input);
+  const slugs =
+    ats === "LEVER" ? extractLeverSlugs(input) : extractGreenhouseSlugs(input);
   let added = 0;
   let updated = 0;
   let skipped = 0;
 
   for (const slug of slugs) {
     const name = nameFromSlug(slug);
-    const boardUrl = `https://job-boards.greenhouse.io/${slug}/`;
+    const boardUrl =
+      ats === "LEVER"
+        ? `https://jobs.lever.co/${slug}/`
+        : `https://job-boards.greenhouse.io/${slug}/`;
 
     try {
       const existing = await prisma.company.findUnique({
@@ -161,12 +198,12 @@ export async function POST(request: Request) {
       if (existing) {
         await prisma.company.update({
           where: { name },
-          data: { boardUrl, platform: "GREENHOUSE" },
+          data: { boardUrl, platform: ats },
         });
         updated += 1;
       } else {
         await prisma.company.create({
-          data: { name, boardUrl, platform: "GREENHOUSE" },
+          data: { name, boardUrl, platform: ats },
         });
         added += 1;
       }

@@ -92,7 +92,7 @@ async function main() {
   );
 
   console.log(
-    `${"Company".padEnd(nameColumnWidth)}Status  Total Jobs   New Jobs`
+    `${"Company".padEnd(nameColumnWidth)}Status  \t\tTotal Jobs  \t\tNew Jobs`
   );
 
   for (const company of greenhouseCompanies) {

@@ -11,6 +11,18 @@ type RequestBody = {
 function extractGreenhouseSlugs(input: string): string[] {
   const slugs = new Set<string>();
   const urlMatches = input.match(/https?:\/\/[^\s]+/g) ?? [];
+  const blockedSlugs = new Set([
+    "about",
+    "apply",
+    "careers",
+    "company",
+    "embed",
+    "home",
+    "job",
+    "jobs",
+    "positions",
+    "requests",
+  ]);
 
   for (const rawUrl of urlMatches) {
     try {
@@ -21,8 +33,22 @@ function extractGreenhouseSlugs(input: string): string[] {
       ) {
         continue;
       }
+      if (url.hostname === "job-boards.greenhouse.io") {
+        const forParam = url.searchParams.get("for");
+        if (forParam) {
+          slugs.add(forParam.toLowerCase());
+          continue;
+        }
+      }
       const parts = url.pathname.split("/").filter(Boolean);
       if (parts.length === 0) {
+        continue;
+      }
+      if (parts[0] === "embed") {
+        const forParam = url.searchParams.get("for");
+        if (forParam) {
+          slugs.add(forParam.toLowerCase());
+        }
         continue;
       }
       slugs.add(parts[0]);
@@ -41,7 +67,45 @@ function extractGreenhouseSlugs(input: string): string[] {
     }
   }
 
-  return Array.from(slugs);
+  const embedMatches =
+    input.match(/job_app\?[^\\s]*for=([a-z0-9_-]+)/gi) ?? [];
+
+  for (const match of embedMatches) {
+    const slugMatch = match.match(/for=([a-z0-9_-]+)/i);
+    if (slugMatch) {
+      slugs.add(slugMatch[1].toLowerCase());
+    }
+  }
+
+  return Array.from(slugs)
+    .map((slug) => {
+      try {
+        return decodeURIComponent(slug);
+      } catch {
+        return slug;
+      }
+    })
+    .map((slug) => slug.replace(/["'<>%]+/g, "").trim())
+    .filter((slug) => {
+      if (blockedSlugs.has(slug)) {
+        return false;
+      }
+      if (!slug) {
+        return false;
+      }
+      if (slug.includes("%")) {
+        return false;
+      }
+      if (
+        slug.includes("<") ||
+        slug.includes(">") ||
+        slug.includes("\"") ||
+        slug.includes(":")
+      ) {
+        return false;
+      }
+      return /^[a-z0-9_-]+$/.test(slug);
+    });
 }
 
 function nameFromSlug(slug: string): string {

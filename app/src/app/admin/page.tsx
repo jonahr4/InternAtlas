@@ -107,8 +107,13 @@ export default function AdminPage() {
           </label>
           <div>
             <div className="font-medium text-zinc-900">Google query</div>
-            <div className="mt-1 break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
-              {`site:boards.greenhouse.io ${location} intext:"apply" (intext:"${roleA}" OR intext:"${roleB}")`}
+            <div className="mt-1 space-y-2">
+              <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
+                {`site:boards.greenhouse.io ${location} intext:"apply" (intext:"${roleA}" OR intext:"${roleB}")`}
+              </div>
+              <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
+                {`inurl:"job-boards.greenhouse.io/embed/job_app?for=" "${roleB}"`}
+              </div>
             </div>
           </div>
           <div className="text-xs text-zinc-600">

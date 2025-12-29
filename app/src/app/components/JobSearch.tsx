@@ -33,8 +33,8 @@ const SORT_OPTIONS: SortOption[] = [
   { label: "Company (Z-A)", sort: "company", sortDir: "desc" },
   { label: "Title (A-Z)", sort: "title", sortDir: "asc" },
   { label: "Title (Z-A)", sort: "title", sortDir: "desc" },
-  { label: "Date Added (Newest)", sort: "created_at", sortDir: "desc" },
-  { label: "Date Added (Oldest)", sort: "created_at", sortDir: "asc" },
+  { label: "Date Found (Newest)", sort: "created_at", sortDir: "desc" },
+  { label: "Date Found (Oldest)", sort: "created_at", sortDir: "asc" },
 ];
 
 const PAGE_SIZE = 50;
@@ -71,7 +71,27 @@ function formatDate(dateString: string): string {
   if (Number.isNaN(date.getTime())) {
     return "Unknown";
   }
-  return date.toISOString().slice(0, 10);
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZoneName: "short",
+  });
+  const parts = formatter.formatToParts(date);
+  const lookup: Record<string, string> = {};
+  for (const part of parts) {
+    if (part.type !== "literal") {
+      lookup[part.type] = part.value;
+    }
+  }
+  const tzLabel =
+    parts.find((part) => part.type === "timeZoneName")?.value ?? "ET";
+  return `${lookup.year}-${lookup.month}-${lookup.day} ${lookup.hour}:${lookup.minute}:${lookup.second} ${tzLabel}`;
 }
 
 export default function JobSearch() {
@@ -322,7 +342,7 @@ export default function JobSearch() {
                 />
               </th>
               <th className="relative border-r border-zinc-200 px-3 py-2 font-medium">
-                Date Added
+                Date Found
                 <span
                   className="absolute right-0 top-0 h-full w-2 cursor-col-resize"
                   onMouseDown={(event) => {

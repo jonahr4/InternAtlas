@@ -22,7 +22,6 @@
 - [x] Ingest 10+ companies on the same platform
 
 ## Phase 3 - Product MVP (filters + search)
-- [ ] Add Postgres full-text search (tsvector + GIN index)
 - [x] Add API filters (company, location, type, date)
 - [x] Add sorting + pagination in API
 - [x] Hook UI filters + search to API
@@ -32,5 +31,7 @@
 - [ ] Add crawl run logging (counts, duration, errors)
 - [ ] Add stats endpoint + small dashboard
 - [ ] Add basic tests (adapters + API)
+- [ ] Add Postgres full-text search (tsvector + GIN index)
+- [ ] Add support for additional ATS providers (Lever, Workday, etc.)
 - [ ] Deploy app + DB
 - [ ] Optional: AI match endpoint + UI

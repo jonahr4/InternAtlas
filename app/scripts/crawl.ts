@@ -709,6 +709,51 @@ async function main() {
   // Restore original console methods
   console.log = originalLog;
   console.error = originalError;
+  
+  // Auto-backup companies to CSV
+  await backupCompaniesToCSV();
+}
+
+async function backupCompaniesToCSV() {
+  try {
+    const companies = await prisma.company.findMany({
+      orderBy: { name: "asc" },
+    });
+
+    const headers = ["id", "name", "platform", "boardUrl", "createdAt", "updatedAt"];
+    const rows = companies.map(company => [
+      company.id,
+      company.name,
+      company.platform,
+      company.boardUrl,
+      company.createdAt.toISOString(),
+      company.updatedAt.toISOString(),
+    ]);
+
+    const escapeCsvField = (field: string) => {
+      if (field.includes(",") || field.includes('"') || field.includes("\n")) {
+        return `"${field.replace(/"/g, '""')}"`;
+      }
+      return field;
+    };
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(escapeCsvField).join(",")),
+    ].join("\n");
+
+    const backupDir = path.join(process.cwd(), "data", "backups");
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+
+    const csvPath = path.join(backupDir, "companies.csv");
+    fs.writeFileSync(csvPath, csvContent, "utf-8");
+
+    console.log(`✓ Backed up ${companies.length} companies to companies.csv`);
+  } catch (error) {
+    console.error("Warning: Failed to backup companies:", error);
+  }
 }
 
 main()

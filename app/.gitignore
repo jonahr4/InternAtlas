@@ -43,3 +43,6 @@ next-env.d.ts
 # logs
 /logs
 *.log
+
+# backups - keep main companies.csv but ignore timestamped backups
+/data/backups/companies-*.csv

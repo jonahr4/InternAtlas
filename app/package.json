@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "crawl": "tsx scripts/crawl.ts",
-    "jobs:clear": "tsx scripts/clear-jobs.ts"
+    "jobs:clear": "tsx scripts/clear-jobs.ts",
+    "companies:export": "tsx scripts/export-companies.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.17.1",

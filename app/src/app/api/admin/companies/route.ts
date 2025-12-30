@@ -154,7 +154,7 @@ function extractLeverSlugs(input: string): string[] {
 function extractWorkdayBoards(input: string): { name: string; boardUrl: string }[] {
   const normalizedInput = input.replace(/&amp;/g, "&");
   const urlMatches = normalizedInput.match(/https?:\/\/[^\s]+/g) ?? [];
-  const blockedSegments = new Set(["job", "jobs", "details", "careers"]);
+  const blockedSegments = new Set(["job", "jobs", "details"]);
   const boards = new Map<string, string>();
 
   for (const rawUrl of urlMatches) {
@@ -181,10 +181,7 @@ function extractWorkdayBoards(input: string): { name: string; boardUrl: string }
       const boardUrl = localeSegment
         ? `${url.origin}/${localeSegment}/${siteSegment}`
         : `${url.origin}/${siteSegment}`;
-      
-      // Use a placeholder name - we'll fetch the real name from the page
-      const nameSlug = `${tenantSlug}_${siteSegment}`;
-      
+      const nameSlug = tenantSlug || siteSegment;
       boards.set(nameSlug, boardUrl);
     } catch {
       continue;
@@ -195,61 +192,6 @@ function extractWorkdayBoards(input: string): { name: string; boardUrl: string }
     name: nameFromSlug(name),
     boardUrl,
   }));
-}
-
-async function fetchWorkdayCompanyName(boardUrl: string): Promise<string | null> {
-  try {
-    const response = await fetch(boardUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      },
-    });
-    
-    if (!response.ok) {
-      return null;
-    }
-    
-    const html = await response.text();
-    
-    // Try multiple patterns to extract company name
-    // Pattern 1: <title>Company Name - Career Site</title>
-    const titleMatch = html.match(/<title>([^<-]+)/i);
-    if (titleMatch) {
-      const title = titleMatch[1].trim();
-      // Clean up common suffixes
-      const cleaned = title
-        .replace(/\s*-?\s*(careers?|jobs?|employment|opportunities).*$/i, '')
-        .trim();
-      if (cleaned && cleaned.length > 2 && cleaned.length < 100) {
-        return cleaned;
-      }
-    }
-    
-    // Pattern 2: og:site_name meta tag
-    const ogSiteMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i) ||
-                        html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
-    if (ogSiteMatch) {
-      const siteName = ogSiteMatch[1].trim();
-      if (siteName && siteName.length > 2 && siteName.length < 100) {
-        return siteName;
-      }
-    }
-    
-    // Pattern 3: Look for "companyName" or similar in JSON data
-    const companyMatch = html.match(/"companyName"\s*:\s*"([^"]+)"/i) ||
-                         html.match(/"company"\s*:\s*"([^"]+)"/i);
-    if (companyMatch) {
-      const company = companyMatch[1].trim();
-      if (company && company.length > 2 && company.length < 100) {
-        return company;
-      }
-    }
-    
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 function nameFromSlug(slug: string): string {
@@ -298,16 +240,8 @@ export async function POST(request: Request) {
         }));
 
   for (const item of workItems) {
-    let name = item.name;
+    const name = item.name;
     const boardUrl = item.boardUrl;
-
-    // For Workday, try to fetch the real company name from the page
-    if (ats === "WORKDAY") {
-      const realName = await fetchWorkdayCompanyName(boardUrl);
-      if (realName) {
-        name = realName;
-      }
-    }
 
     try {
       const existing = await prisma.company.findUnique({

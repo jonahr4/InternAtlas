@@ -35,11 +35,3 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: npm run crawl
-      
-      - name: Upload crawl logs
-        if: always() # Upload even if crawl fails
-        uses: actions/upload-artifact@v4
-        with:
-          name: crawl-logs-${{ github.run_number }}
-          path: app/logs/*.log
-          retention-days: 30

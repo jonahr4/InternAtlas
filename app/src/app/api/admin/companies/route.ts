@@ -159,7 +159,18 @@ function extractWorkdayBoards(input: string): { name: string; boardUrl: string }
 
   for (const rawUrl of urlMatches) {
     try {
-      const url = new URL(rawUrl);
+      // Clean URL: remove Google tracking and encoded fragments
+      let cleanUrl = rawUrl
+        .split('"')[0]          // Remove everything after quote
+        .split("'")[0]          // Remove everything after single quote
+        .split('>')[0]          // Remove everything after >
+        .split('&ved=')[0]      // Remove Google tracking
+        .split('&sa=')[0]       // Remove Google tracking
+        .split('%22')[0]        // Remove encoded quotes
+        .split('%23')[0]        // Remove encoded # and everything after
+        .split('#')[0];         // Remove # and everything after
+      
+      const url = new URL(cleanUrl);
       if (!url.hostname.endsWith("myworkdayjobs.com")) {
         continue;
       }
@@ -225,8 +236,8 @@ export async function POST(request: Request) {
   let added = 0;
   let updated = 0;
   let skipped = 0;
-  const addedUrls: string[] = [];
-  const updatedUrls: string[] = [];
+  const addedUrls: { name: string; url: string }[] = [];
+  const updatedUrls: { name: string; url: string }[] = [];
 
   const workItems =
     ats === "WORKDAY"
@@ -244,24 +255,40 @@ export async function POST(request: Request) {
     const boardUrl = item.boardUrl;
 
     try {
-      const existing = await prisma.company.findUnique({
-        where: { name },
-        select: { id: true },
+      // Check if this boardUrl already exists
+      const existingByUrl = await prisma.company.findFirst({
+        where: { boardUrl },
+        select: { id: true, name: true },
       });
 
-      if (existing) {
-        await prisma.company.update({
-          where: { name },
-          data: { boardUrl, platform: ats },
-        });
+      if (existingByUrl) {
+        // URL exists - only update the name if different, don't change URL
+        if (existingByUrl.name !== name) {
+          await prisma.company.update({
+            where: { id: existingByUrl.id },
+            data: { name, platform: ats },
+          });
+        }
         updated += 1;
-        updatedUrls.push(boardUrl);
+        updatedUrls.push({ name, url: boardUrl });
       } else {
+        // Check if name exists with different URL
+        const existingByName = await prisma.company.findUnique({
+          where: { name },
+          select: { id: true, boardUrl: true },
+        });
+        
+        if (existingByName) {
+          // Name exists but different URL - don't overwrite good URL with potentially bad one
+          // Skip this to avoid corrupting existing data
+          skipped += 1;
+          continue;
+        }
         await prisma.company.create({
           data: { name, boardUrl, platform: ats },
         });
         added += 1;
-        addedUrls.push(boardUrl);
+        addedUrls.push({ name, url: boardUrl });
       }
     } catch {
       skipped += 1;

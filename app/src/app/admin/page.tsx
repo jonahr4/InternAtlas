@@ -8,8 +8,8 @@ type ApiResponse = {
   skipped: number;
   total: number;
   message?: string;
-  addedUrls?: string[];
-  updatedUrls?: string[];
+  addedUrls?: { name: string; url: string }[];
+  updatedUrls?: { name: string; url: string }[];
 };
 
 export default function AdminPage() {
@@ -243,11 +243,13 @@ export default function AdminPage() {
                 <div>
                   <div className="font-medium text-green-700 mb-2">New:</div>
                   <div className="max-h-48 overflow-y-auto rounded border border-zinc-200 bg-white p-3">
-                    <ul className="space-y-1 text-xs font-mono">
-                      {response.addedUrls.map((url, idx) => (
-                        <li key={idx} className="break-all text-blue-600">
-                          <a href={url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                            {url}
+                    <ul className="space-y-1 text-xs">
+                      {response.addedUrls.map((item, idx) => (
+                        <li key={idx} className="break-all">
+                          <span className="font-medium text-zinc-900">{item.name}</span>
+                          <span className="text-zinc-400 mx-2">→</span>
+                          <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-mono">
+                            {item.url}
                           </a>
                         </li>
                       ))}
@@ -260,11 +262,13 @@ export default function AdminPage() {
                 <div>
                   <div className="font-medium text-amber-700 mb-2">Updated:</div>
                   <div className="max-h-48 overflow-y-auto rounded border border-zinc-200 bg-white p-3">
-                    <ul className="space-y-1 text-xs font-mono">
-                      {response.updatedUrls.map((url, idx) => (
-                        <li key={idx} className="break-all text-blue-600">
-                          <a href={url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                            {url}
+                    <ul className="space-y-1 text-xs">
+                      {response.updatedUrls.map((item, idx) => (
+                        <li key={idx} className="break-all">
+                          <span className="font-medium text-zinc-900">{item.name}</span>
+                          <span className="text-zinc-400 mx-2">→</span>
+                          <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-mono">
+                            {item.url}
                           </a>
                         </li>
                       ))}

@@ -42,6 +42,7 @@ type Company = {
   name: string;
   platform: "GREENHOUSE" | "LEVER" | "WORKDAY" | "CUSTOM";
   boardUrl: string;
+  firstCrawledAt: Date | null;
 };
 
 type NormalizedJob = {
@@ -470,13 +471,23 @@ async function main() {
         .filter(Boolean)
     : [];
   const debugMode = process.argv.includes("--debug");
+  const newOnlyMode = process.argv.includes("--new-only");
   
   console.log(`Log file: ${logFilePath}`);
   
   const companies = (await prisma.company.findMany({
-    select: { id: true, name: true, platform: true, boardUrl: true },
+    select: { id: true, name: true, platform: true, boardUrl: true, firstCrawledAt: true },
   })) as Company[];
   let supportedCompanies = getSupportedCompanies(companies);
+  
+  // Filter for companies that have never been crawled
+  if (newOnlyMode) {
+    supportedCompanies = supportedCompanies.filter(
+      (company) => !company.firstCrawledAt
+    );
+    console.log(`Filtering for new companies only: ${supportedCompanies.length} companies`);
+  }
+  
   if (atsFilter.length > 0) {
     const allowed = new Set(atsFilter);
     supportedCompanies = supportedCompanies.filter((company) =>
@@ -502,9 +513,12 @@ async function main() {
   const jobsCreatedByPlatform = new Map<string, number>();
   const jobsDeactivatedByPlatform = new Map<string, number>();
   const companiesByPlatform = new Map<string, number>();
-  const nameColumnWidth = Math.max(
-    12,
-    ...supportedCompanies.map((company) => company.name.length + 2)
+  const nameColumnWidth = Math.min(
+    50, // Cap at 50 characters max
+    Math.max(
+      12,
+      ...supportedCompanies.map((company) => company.name.length + 2)
+    )
   );
   const atsColumnWidth = Math.max(
     5,
@@ -519,6 +533,15 @@ async function main() {
 
   for (const company of supportedCompanies) {
     try {
+      const isNewCompany = !company.firstCrawledAt;
+      if (isNewCompany) {
+        // Mark as seen so subsequent runs treat it as OLD, even if inserts fail
+        await prisma.company.update({
+          where: { id: company.id },
+          data: { firstCrawledAt: new Date() },
+        });
+      }
+
       let normalized: NormalizedJob[] = [];
       if (company.platform === "GREENHOUSE") {
         const jobs = await fetchGreenhouseJobs(company.boardUrl);
@@ -562,7 +585,6 @@ async function main() {
           .map((job) => job.externalId)
           .filter((id): id is string => Boolean(id))
       );
-      const isNewCompany = existingActiveIds.size === 0;
       let newJobsForCompany = 0;
 
       // Get current job IDs from the board
@@ -677,12 +699,17 @@ async function main() {
       // Calculate total closed jobs for this company
       const totalClosedJobs = existingJobs.filter(job => job.status === "CLOSED").length;
       
+      // Truncate long company names
+      const displayName = company.name.length > 48 
+        ? company.name.substring(0, 45) + "..." 
+        : company.name;
+      
       const totalLabel = `Total Jobs:${normalized.length}`;
       const newLabel = `New Jobs:${newJobsForCompany}`;
       const totalClosedLabel = `Total Closed:${totalClosedJobs}`;
       const newClosedLabel = `New Closed:${deactivatedJobsForCompany}`;
       console.log(
-        `${company.name.padEnd(nameColumnWidth)}${company.platform.padEnd(
+        `${displayName.padEnd(nameColumnWidth)}${company.platform.padEnd(
           atsColumnWidth
         )}${status.padEnd(7)}${totalLabel.padEnd(15)}${newLabel.padEnd(15)}${totalClosedLabel.padEnd(15)}${newClosedLabel}`
       );
@@ -794,7 +821,7 @@ async function backupCompaniesToCSV() {
       orderBy: { name: "asc" },
     });
 
-    const headers = ["id", "name", "platform", "boardUrl", "createdAt", "updatedAt"];
+    const headers = ["id", "name", "platform", "boardUrl", "createdAt", "updatedAt", "firstCrawledAt"];
     const rows = companies.map(company => [
       company.id,
       company.name,
@@ -802,6 +829,7 @@ async function backupCompaniesToCSV() {
       company.boardUrl,
       company.createdAt.toISOString(),
       company.updatedAt.toISOString(),
+      company.firstCrawledAt ? company.firstCrawledAt.toISOString() : "",
     ]);
 
     const escapeCsvField = (field: string) => {

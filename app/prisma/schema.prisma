@@ -41,6 +41,7 @@ model Company {
   boardUrl  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  firstCrawledAt DateTime?
 
   jobs Job[]
 }

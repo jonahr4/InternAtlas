@@ -8,6 +8,8 @@ type ApiResponse = {
   skipped: number;
   total: number;
   message?: string;
+  addedUrls?: string[];
+  updatedUrls?: string[];
 };
 
 export default function AdminPage() {
@@ -23,7 +25,7 @@ export default function AdminPage() {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSubmitting(true);
-    setResponse(null);
+    setResponse(null); // Reset to refresh the list
 
     try {
       const res = await fetch("/api/admin/companies", {
@@ -234,6 +236,44 @@ export default function AdminPage() {
           <div>Updated (duplicates): {response.updated ?? 0}</div>
           <div>Skipped: {response.skipped}</div>
           {response.message ? <div>{response.message}</div> : null}
+          
+          {(response.addedUrls && response.addedUrls.length > 0) || (response.updatedUrls && response.updatedUrls.length > 0) ? (
+            <div className="mt-4 space-y-3">
+              {response.addedUrls && response.addedUrls.length > 0 ? (
+                <div>
+                  <div className="font-medium text-green-700 mb-2">New:</div>
+                  <div className="max-h-48 overflow-y-auto rounded border border-zinc-200 bg-white p-3">
+                    <ul className="space-y-1 text-xs font-mono">
+                      {response.addedUrls.map((url, idx) => (
+                        <li key={idx} className="break-all text-blue-600">
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                            {url}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ) : null}
+              
+              {response.updatedUrls && response.updatedUrls.length > 0 ? (
+                <div>
+                  <div className="font-medium text-amber-700 mb-2">Updated:</div>
+                  <div className="max-h-48 overflow-y-auto rounded border border-zinc-200 bg-white p-3">
+                    <ul className="space-y-1 text-xs font-mono">
+                      {response.updatedUrls.map((url, idx) => (
+                        <li key={idx} className="break-all text-blue-600">
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                            {url}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </main>

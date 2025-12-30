@@ -225,6 +225,8 @@ export async function POST(request: Request) {
   let added = 0;
   let updated = 0;
   let skipped = 0;
+  const addedUrls: string[] = [];
+  const updatedUrls: string[] = [];
 
   const workItems =
     ats === "WORKDAY"
@@ -253,11 +255,13 @@ export async function POST(request: Request) {
           data: { boardUrl, platform: ats },
         });
         updated += 1;
+        updatedUrls.push(boardUrl);
       } else {
         await prisma.company.create({
           data: { name, boardUrl, platform: ats },
         });
         added += 1;
+        addedUrls.push(boardUrl);
       }
     } catch {
       skipped += 1;
@@ -269,5 +273,7 @@ export async function POST(request: Request) {
     added,
     updated,
     skipped,
+    addedUrls,
+    updatedUrls,
   });
 }

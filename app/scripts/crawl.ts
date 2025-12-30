@@ -514,7 +514,7 @@ async function main() {
   console.log(
     `${"Company".padEnd(nameColumnWidth)}ATS${" ".repeat(
       Math.max(1, atsColumnWidth - 3)
-    )}Status        Total Jobs     New Jobs       Deactivated`
+    )}Status        Total Jobs     New Jobs       Total Closed   New Closed`
   );
 
   for (const company of supportedCompanies) {
@@ -545,20 +545,24 @@ async function main() {
         });
       }
 
+      // Fetch ALL jobs for this company (including CLOSED ones)
+      // This allows us to reactivate jobs that were wrongly marked as closed
       const existingJobs = await prisma.job.findMany({
         where: { 
           companyId: company.id, 
           sourcePlatform: company.platform,
-          status: "ACTIVE"
+          // ✅ Removed status filter - fetch ALL jobs
         },
-        select: { id: true, externalId: true },
+        select: { id: true, externalId: true, status: true },
       });
-      const existingIds = new Set(
+      
+      const existingActiveIds = new Set(
         existingJobs
+          .filter((job) => job.status === "ACTIVE")
           .map((job) => job.externalId)
           .filter((id): id is string => Boolean(id))
       );
-      const isNewCompany = existingIds.size === 0;
+      const isNewCompany = existingActiveIds.size === 0;
       let newJobsForCompany = 0;
 
       // Get current job IDs from the board
@@ -568,51 +572,70 @@ async function main() {
           .filter((id): id is string => Boolean(id))
       );
 
-      // Create new jobs
+      // Create or reactivate jobs
       for (const job of normalized) {
-        if (existingIds.has(job.externalId)) {
-          // Update lastSeenAt for existing jobs
-          await prisma.job.updateMany({
-            where: {
-              companyId: company.id,
-              externalId: job.externalId,
-              sourcePlatform: company.platform,
-            },
+        // Check if this job already exists (in any status)
+        const existingJob = existingJobs.find(j => j.externalId === job.externalId);
+        
+        if (existingJob) {
+          // Update existing job: refresh lastSeenAt and ensure it's ACTIVE
+          await prisma.job.update({
+            where: { id: existingJob.id },
             data: {
               lastSeenAt: new Date(),
+              status: "ACTIVE", // ✅ Reactivate if it was wrongly closed
             },
           });
+          
+          // If it was previously CLOSED and we just reactivated it
+          if (existingJob.status === "CLOSED") {
+            newJobsForCompany += 1; // Count as "new" for logging
+          }
           continue;
         }
 
-        await prisma.job.create({
-          data: {
-            companyId: company.id,
-            title: job.title,
-            location: job.location,
-            postedAt: job.postedAt ? new Date(job.postedAt) : null,
-            jobUrl: job.jobUrl,
-            applyUrl: job.jobUrl,
-            descriptionText: job.descriptionText,
-            sourcePlatform: company.platform,
-            externalId: job.externalId,
-            status: "ACTIVE",
-          },
-        });
+        // Try to create the job - if it already exists (from another company with same board URL), skip it
+        try {
+          await prisma.job.create({
+            data: {
+              companyId: company.id,
+              title: job.title,
+              location: job.location,
+              postedAt: job.postedAt ? new Date(job.postedAt) : null,
+              jobUrl: job.jobUrl,
+              applyUrl: job.jobUrl,
+              descriptionText: job.descriptionText,
+              sourcePlatform: company.platform,
+              externalId: job.externalId,
+              status: "ACTIVE",
+            },
+          });
 
-        existingIds.add(job.externalId);
-        newJobsForCompany += 1;
-        totalCreated += 1;
-        jobsCreatedByPlatform.set(
-          company.platform,
-          (jobsCreatedByPlatform.get(company.platform) ?? 0) + 1
-        );
+          newJobsForCompany += 1;
+          totalCreated += 1;
+          jobsCreatedByPlatform.set(
+            company.platform,
+            (jobsCreatedByPlatform.get(company.platform) ?? 0) + 1
+          );
+        } catch (error: any) {
+          // Ignore unique constraint violations (job already exists from another company)
+          // Prisma error codes: P2002 = Unique constraint failed
+          if (error?.code !== 'P2002' && !error?.message?.includes('Unique constraint failed')) {
+            throw error; // Re-throw if it's not a duplicate error
+          }
+          // Silently skip duplicates
+        }
       }
 
-      // Deactivate jobs that are no longer on the board
+      // Deactivate ACTIVE jobs that are no longer on the board
       let deactivatedJobsForCompany = 0;
       for (const existingJob of existingJobs) {
-        if (existingJob.externalId && !currentExternalIds.has(existingJob.externalId)) {
+        // Only close jobs that are currently ACTIVE and not found on the board
+        if (
+          existingJob.status === "ACTIVE" &&
+          existingJob.externalId && 
+          !currentExternalIds.has(existingJob.externalId)
+        ) {
           await prisma.job.update({
             where: { id: existingJob.id },
             data: { status: "CLOSED" },
@@ -651,13 +674,17 @@ async function main() {
         company.platform,
         (companiesByPlatform.get(company.platform) ?? 0) + 1
       );
+      // Calculate total closed jobs for this company
+      const totalClosedJobs = existingJobs.filter(job => job.status === "CLOSED").length;
+      
       const totalLabel = `Total Jobs:${normalized.length}`;
       const newLabel = `New Jobs:${newJobsForCompany}`;
-      const deactivatedLabel = `Deactivated:${deactivatedJobsForCompany}`;
+      const totalClosedLabel = `Total Closed:${totalClosedJobs}`;
+      const newClosedLabel = `New Closed:${deactivatedJobsForCompany}`;
       console.log(
         `${company.name.padEnd(nameColumnWidth)}${company.platform.padEnd(
           atsColumnWidth
-        )}${status.padEnd(7)}${totalLabel.padEnd(15)}${newLabel.padEnd(15)}${deactivatedLabel}`
+        )}${status.padEnd(7)}${totalLabel.padEnd(15)}${newLabel.padEnd(15)}${totalClosedLabel.padEnd(15)}${newClosedLabel}`
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

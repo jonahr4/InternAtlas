@@ -29,13 +29,15 @@
 
 ## Phase 4 - Polish + Stretch
 - [x] Add to job  board link to company page too (hyperlinked to company name)
-- [ ] Add support for additional ATS providers (Lever, Workday, etc.)
-- [ ] Upload DB online 
-- [ ] Deploy app + DB 
-    - once deployed, front end is job board where its better search able also says new lisitings today 
-    - Back end crawls every 12 hours and updates with new jobs
-- [x] Add function to crawl to search to see if jobs in DB are no longer listed on board (or if theier links are invalid) and remove them from the job board( or keep them and just deactivate with note Expeired)
+- [x] Add support for additional ATS providers (Lever, Workday - 3 total)
+- [x] Upload DB online (Neon PostgreSQL)
+- [x] Deploy app + DB (Vercel + Neon) 
+- [x] Deployed front end job board with searchable interface
+- [x] Back end crawls every 4 hours and updates with new jobs (GitHub Actions)
+- [x] Add function to crawl to search to see if jobs in DB are no longer listed on board (or if their links are invalid) and remove them from the job board (or keep them and just deactivate with note Expired)
 - [x] Update crawl to recognize jobs that are no longer active and mark them as deactivated
+- [x] Automated deployment from main branch
+- [x] Production monitoring with Vercel + Neon dashboards
 
 
 

@@ -28,33 +28,97 @@
 - [x] Add job detail view
 
 ## Phase 4 - Polish + Stretch
-- [ ] Add to board link to company page too (hyperlinked to company name)
-- [ ] Add stats endpoint + small dashboard - Data analytics on job postings (most popular title, location, etc.)
-- [ ] Add Postgres full-text search (tsvector + GIN index)
+- [x] Add to job  board link to company page too (hyperlinked to company name)
 - [ ] Add support for additional ATS providers (Lever, Workday, etc.)
 - [ ] Upload DB online 
 - [ ] Deploy app + DB 
     - once deployed, front end is job board where its better search able also says new lisitings today 
-    - Back end crawls every 2 hours and updates with new jobs
-- [ ] Optional: AI match endpoint + UI
-- [ ] Add function to crawl to search to see if jobs in DB are no longer listed on board (or if theier links are invalid) and remove them from the job board( or keep them and just deactivate with note Expeired)
+    - Back end crawls every 12 hours and updates with new jobs
+- [x] Add function to crawl to search to see if jobs in DB are no longer listed on board (or if theier links are invalid) and remove them from the job board( or keep them and just deactivate with note Expeired)
+- [x] Update crawl to recognize jobs that are no longer active and mark them as deactivated
 
-## Notes on front end for final deployion
-after deployed fix front end
-- add basic view to search table and everything for no sign in
-- For sign in have sepcial features
-- being able to make "custom searches" where you can create certrain tables for certeain keywords for each one
-    - For example have board the  called "MA intern" where you set it up to be Keyword intern and Location and when the click on it it only shows those results. This would be to make it easier for user to look at differnt customized boards
-    - Also when useer looks at any of these boards they can click a button that says "SEEN" or smth like that. Then when they look back on the page on a differnt day in furutre, all the new jobs that were posted after "SEEN" was last clicked will show with "NEW" badges that go away when seen is clicked again.
-    - User can click on jobs and check "To Apply" which brings them to another page we will have for users who log in which is "Jobs To Apply to" which is a table of the ones you selected to apply. on this to apply screen you can check them again to add them to a applied table. (on same page but bellow the to apply table) On either of these tables you will have option ro remove jobs from table also
-- The idea is of someone wants to go on app to search around and use it also but you can also make account to make it easier to organize
-- The page from having an account to not having acround isnt a big chnage
-- The page signed out is basically what we have already just the main table as it is and top right will hvae a sign in for more features    
-    - We will use firebase for logins
-- When logged in there will be 3 lines top right corner than when u click side nav bar comes to right that shows the options for "Custom Tables" and "Application Tracking" tables. Additionally when logged in there is a new button for Adding that when clickec gives option to add to Applied or To Apply which will add them to corresponding tables. The way to add these is when logged in new selector squars will be on left of each job row that only become visible when the new button select is trigged, promting users to select
--The Custom Tables Screen contains Option to add tables and exisiting tables that you have already created, They are just stacked on top eachother
-- APplication trcking is simular First table is to apply and then u scoll down and see another table applied
-- U can also get emailed when compnay u like posts jobs under search terms (stretch goal)
+
+
+## Phase 5 - front end for final deployion
+After deployed, fix front end with authentication and advanced features
+
+### Basic (Non-Logged-In) Experience
+- [ ] Add basic view to search table and everything for users without sign in
+- [ ] Display main job board table as it currently exists
+- [ ] Add "Sign in for more features" button in top right corner
+- [ ] Ensure page experience is similar whether logged in or not (main difference is extra features)
+- [ ] Jobs that are deativated are striked out on the job board and there is a button top right that will not display them in job board
+
+### Authentication Setup
+- [ ] Integrate Firebase for user logins
+- [ ] Create sign up flow
+- [ ] Create sign in flow
+- [ ] Add logout functionality
+
+### Logged-In UI Components
+- [ ] Add 3-line menu button in top right corner when logged in
+- [ ] Implement side navigation bar that slides in from right when menu clicked
+- [ ] Add "Custom Tables" option in side nav
+- [ ] Add "Application Tracking" option in side nav
+- [ ] Add new "Select Jobs" button above every table that enables job selection mode
+- [ ] Implement selector squares on left of each job row (only visible when selection mode triggered)
+- [ ] once jobs are slected user. has optopn to add it to "To Apply" or "Applied" boards
+
+### Custom Tables Feature
+- [ ] Create "Custom Tables" screen accessible from side nav
+- [ ] Add UI to create new custom table with name (e.g., "MA intern")
+- [ ] Add keyword input field for custom table setup
+- [ ] Add location input field for custom table setup (or any other filters)
+- [ ] Display existing custom tables stacked vertically on Custom Tables screen
+- [ ] Implement filtering logic to show only jobs matching custom table criteria
+- [ ] Add ability to click on custom table to view filtered results
+- [ ] Make it easier for users to look at different customized boards
+
+### "SEEN" Feature for Custom Tables
+- [ ] Add "SEEN" button to each custom table view
+- [ ] Store timestamp of when "SEEN" was last clicked for each custom table
+- [ ] Compare job posting dates against last "SEEN" timestamp
+- [ ] Display "NEW" badge on jobs posted after last "SEEN" click
+- [ ] Remove "NEW" badges when "SEEN" is clicked again
+- [ ] Persist "SEEN" state in database per user per custom table
+
+### Application Tracking - "To Apply" Table
+- [ ] Create "Application Tracking" screen accessible from side nav
+- [ ] Implement "To Apply" functionality when job is selected
+- [ ] Create "Jobs To Apply to" table showing all jobs user selected to apply to
+- [ ] Display "To Apply" table at top of Application Tracking screen
+- [ ] Add checkbox/button to move jobs from "To Apply" to "Applied"
+- [ ] Add remove button to delete jobs from "To Apply" table
+- [ ] Store "To Apply" jobs in database per user
+
+### Application Tracking - "Applied" Table
+- [ ] Create "Applied" table below "To Apply" table on same screen
+- [ ] Implement functionality to move jobs from "To Apply" to "Applied" when checked
+- [ ] Display all jobs marked as applied
+- [ ] Add remove button to delete jobs from "Applied" table
+- [ ] Store "Applied" jobs in database per user
+
+### Job Selection Workflow
+- [ ] When "Select Jobs" button clicked, show selector squares on left of job rows
+- [ ] Display "Add to Applied" and "Add to To Apply" options after jobs selected
+- [ ] Implement bulk add to "To Apply" from main job board
+- [ ] Implement bulk add to "Applied" from main job board
+- [ ] Add confirmation feedback when jobs are added to tables
+
+### Email Notifications (Stretch Goal)
+- [ ] Create email subscription system for companies and search terms
+- [ ] Allow users to subscribe to specific companies
+- [ ] Allow users to subscribe to specific search terms/keywords
+- [ ] Send email when subscribed company posts new job matching criteria
+- [ ] Add email preferences page for managing subscriptions
+- [ ] Implement email unsubscribe functionality
+
+## Phase 6
+- [ ] Add stats endpoint + small dashboard - Data analytics on job postings (most popular title, location, etc.)
+- [ ] Add Postgres full-text search (tsvector + GIN index)
+- [ ] Optional: AI match endpoint + UI
+
+
 ##
 Redefine porblem statment and what solutuion would be. Problem is i dont trust job boards that all posts different jobs giving me the feeling im missing on jobs that arent posting. Also its too hard to track all differnt companies individial. Solutuon: this free and assessable Master list that is really easy to use and has Huge Job data base that is easily filterable to what users are looking for and updated daily off of a huge list of companies . I feel like smth like this doesnt exisit 
 

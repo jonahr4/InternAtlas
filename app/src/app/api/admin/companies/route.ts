@@ -151,6 +151,49 @@ function extractLeverSlugs(input: string): string[] {
     .filter((slug) => slug && /^[a-z0-9_-]+$/.test(slug));
 }
 
+function extractWorkdayBoards(input: string): { name: string; boardUrl: string }[] {
+  const normalizedInput = input.replace(/&amp;/g, "&");
+  const urlMatches = normalizedInput.match(/https?:\/\/[^\s]+/g) ?? [];
+  const blockedSegments = new Set(["job", "jobs", "details"]);
+  const boards = new Map<string, string>();
+
+  for (const rawUrl of urlMatches) {
+    try {
+      const url = new URL(rawUrl);
+      if (!url.hostname.endsWith("myworkdayjobs.com")) {
+        continue;
+      }
+      const hostParts = url.hostname.split(".").filter(Boolean);
+      const tenantSlug = hostParts.length > 0 ? hostParts[0] : "";
+      const parts = url.pathname.split("/").filter(Boolean);
+      if (parts.length === 0) {
+        continue;
+      }
+      let siteSegment = parts[0];
+      let localeSegment = "";
+      if (/^[a-z]{2}-[A-Z]{2}$/.test(siteSegment) && parts.length > 1) {
+        localeSegment = siteSegment;
+        siteSegment = parts[1];
+      }
+      if (!siteSegment || blockedSegments.has(siteSegment.toLowerCase())) {
+        continue;
+      }
+      const boardUrl = localeSegment
+        ? `${url.origin}/${localeSegment}/${siteSegment}`
+        : `${url.origin}/${siteSegment}`;
+      const nameSlug = tenantSlug || siteSegment;
+      boards.set(nameSlug, boardUrl);
+    } catch {
+      continue;
+    }
+  }
+
+  return Array.from(boards.entries()).map(([name, boardUrl]) => ({
+    name: nameFromSlug(name),
+    boardUrl,
+  }));
+}
+
 function nameFromSlug(slug: string): string {
   return slug
     .replace(/[-_]+/g, " ")
@@ -178,16 +221,25 @@ export async function POST(request: Request) {
 
   const slugs =
     ats === "LEVER" ? extractLeverSlugs(input) : extractGreenhouseSlugs(input);
+  const workdayBoards = ats === "WORKDAY" ? extractWorkdayBoards(input) : [];
   let added = 0;
   let updated = 0;
   let skipped = 0;
 
-  for (const slug of slugs) {
-    const name = nameFromSlug(slug);
-    const boardUrl =
-      ats === "LEVER"
-        ? `https://jobs.lever.co/${slug}/`
-        : `https://job-boards.greenhouse.io/${slug}/`;
+  const workItems =
+    ats === "WORKDAY"
+      ? workdayBoards
+      : slugs.map((slug) => ({
+          name: nameFromSlug(slug),
+          boardUrl:
+            ats === "LEVER"
+              ? `https://jobs.lever.co/${slug}/`
+              : `https://job-boards.greenhouse.io/${slug}/`,
+        }));
+
+  for (const item of workItems) {
+    const name = item.name;
+    const boardUrl = item.boardUrl;
 
     try {
       const existing = await prisma.company.findUnique({
@@ -213,7 +265,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    total: slugs.length,
+    total: workItems.length,
     added,
     updated,
     skipped,

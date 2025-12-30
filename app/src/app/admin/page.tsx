@@ -49,11 +49,11 @@ export default function AdminPage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-16">
       <h1 className="text-2xl font-semibold text-zinc-900">
-        Admin: Import Greenhouse Boards
+        Admin: Import ATS Boards
       </h1>
       <p className="text-zinc-600">
-        Paste Google results or a list of Greenhouse board URLs. We will extract
-        company slugs and store them in the database.
+        Paste Google results or job board HTML. We will extract ATS board URLs
+        and store companies in the database.
       </p>
       <section className="rounded border border-zinc-200 bg-white p-4 text-sm text-zinc-700">
         <div className="font-medium text-zinc-900">ATS source</div>
@@ -67,11 +67,15 @@ export default function AdminPage() {
             >
               <option value="GREENHOUSE">Greenhouse</option>
               <option value="LEVER">Lever</option>
-              <option value="WORKDAY">Workday (to be implemented)</option>
+              <option value="WORKDAY">Workday</option>
               <option value="CUSTOM">Custom (to be implemented)</option>
             </select>
           </label>
-          {ats === "WORKDAY" || ats === "CUSTOM" ? (
+          {ats === "WORKDAY" ? (
+            <div className="text-xs text-amber-700">
+            </div>
+          ) : null}
+          {ats === "CUSTOM" ? (
             <div className="text-xs text-amber-700">
               Selected ATS is not implemented yet.
             </div>
@@ -112,6 +116,15 @@ export default function AdminPage() {
                 <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
                   {`site:jobs.lever.co ${location} intext:"apply" (intext:"${roleA}" OR intext:"${roleB}")`}
                 </div>
+              ) : ats === "WORKDAY" ? (
+                <>
+                  <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
+                    {`site:myworkdayjobs.com ${location} intext:"apply" (intext:"${roleA}" OR intext:"${roleB}")`}
+                  </div>
+                  <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
+                    {`site:wd1.myworkdayjobs.com inurl:/en-US/ "${roleB}"`}
+                  </div>
+                </>
               ) : (
                 <>
                   <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">

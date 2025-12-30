@@ -1,4 +1,6 @@
 import { prisma } from "../src/lib/prisma";
+import * as fs from "fs";
+import * as path from "path";
 
 type GreenhouseJob = {
   id: number;
@@ -22,6 +24,17 @@ type LeverJob = {
     team?: string;
     commitment?: string;
   };
+};
+
+type WorkdayJob = {
+  jobId?: string;
+  title?: string;
+  externalPath?: string;
+  locationsText?: string;
+  postedOn?: string;
+  postedOnDate?: string;
+  bulletFields?: Array<{ label?: string; value?: string }>;
+  jobReqId?: string;
 };
 
 type Company = {
@@ -116,25 +129,363 @@ function normalizeLeverJob(companyName: string, job: LeverJob): NormalizedJob {
   };
 }
 
+type WorkdayParams = {
+  origin: string;
+  tenant: string;
+  site: string;
+  locale?: string;
+};
+
+const workdaySiteCache = new Map<string, WorkdayParams>();
+
+function getWorkdayParams(boardUrl: string): WorkdayParams {
+  const url = new URL(boardUrl);
+  const hostParts = url.hostname.split(".").filter(Boolean);
+  const tenant = hostParts.length > 0 ? hostParts[0] : "";
+  if (!tenant) {
+    throw new Error(`Invalid Workday board URL (missing tenant): ${boardUrl}`);
+  }
+  const pathParts = url.pathname.split("/").filter(Boolean);
+  if (pathParts.length === 0) {
+    throw new Error(`Invalid Workday board URL (missing site): ${boardUrl}`);
+  }
+  const locale =
+    /^[a-z]{2}-[A-Z]{2}$/.test(pathParts[0]) ? pathParts[0] : undefined;
+  let site = pathParts[0];
+  if (/^[a-z]{2}-[A-Z]{2}$/.test(pathParts[0]) && pathParts.length > 1) {
+    site = pathParts[1];
+  }
+  if (!site) {
+    throw new Error(`Invalid Workday board URL (missing site): ${boardUrl}`);
+  }
+  return { origin: url.origin, tenant, site, locale };
+}
+
+async function discoverWorkdaySite(boardUrl: string): Promise<WorkdayParams> {
+  const cached = workdaySiteCache.get(boardUrl);
+  if (cached) {
+    return cached;
+  }
+  const url = new URL(boardUrl);
+  const hostParts = url.hostname.split(".").filter(Boolean);
+  const tenant = hostParts.length > 0 ? hostParts[0] : "";
+  if (!tenant) {
+    throw new Error(`Invalid Workday board URL (missing tenant): ${boardUrl}`);
+  }
+
+  const res = await fetch(boardUrl, {
+    headers: {
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch ${boardUrl}: ${res.status}`);
+  }
+  const html = await res.text();
+
+  // Extract site from job links (the canonical source)
+  // Pattern: /{locale}/{site}/job/{location}/{title}_{id}
+  // or: /{locale}/{site}/details/{title}_{id}
+  const jobLinkPatterns = [
+    /\/([a-z]{2}[-_][A-Z]{2})\/([^/]+)\/job\//g,
+    /\/([a-z]{2}[-_][A-Z]{2})\/([^/]+)\/details\//g,
+    /href=["']\/([a-z]{2}[-_][A-Z]{2})\/([^/]+)\/job\//g,
+    /href=["']\/([a-z]{2}[-_][A-Z]{2})\/([^/]+)\/details\//g,
+  ];
+
+  let locale: string | undefined;
+  let site: string | undefined;
+
+  // Try to extract from job links (most reliable)
+  for (const pattern of jobLinkPatterns) {
+    const matches = Array.from(html.matchAll(pattern));
+    if (matches.length > 0) {
+      const match = matches[0];
+      locale = match[1].replace("_", "-");
+      site = match[2];
+      break;
+    }
+  }
+
+  // Fallback: try JSON-embedded site IDs (common in Workday HTML)
+  if (!site) {
+    const siteIdMatch =
+      html.match(/siteId:\s*"([^"]+)"/) ??
+      html.match(/"siteId"\s*:\s*"([^"]+)"/) ??
+      html.match(/"careerSiteId"\s*:\s*"([^"]+)"/);
+    if (siteIdMatch) {
+      site = siteIdMatch[1];
+    }
+  }
+
+  if (!site) {
+    throw new Error(`Workday site slug not found in board HTML for ${boardUrl}`);
+  }
+
+  // Default to en-US if no locale found
+  if (!locale) {
+    locale = "en-US";
+  }
+
+  const params = { origin: url.origin, tenant, site, locale };
+  workdaySiteCache.set(boardUrl, params);
+  return params;
+}
+
+function buildWorkdayJobUrl(boardUrl: string, externalPath?: string): string {
+  if (!externalPath) {
+    return boardUrl;
+  }
+  if (externalPath.startsWith("http")) {
+    return externalPath;
+  }
+  const normalizedPath = externalPath.startsWith("/")
+    ? externalPath
+    : `/${externalPath}`;
+  const url = new URL(boardUrl);
+  const pathParts = url.pathname.split("/").filter(Boolean);
+  const basePath = `/${pathParts.join("/")}`.replace(/\/+$/, "");
+  const basePathLower = basePath.toLowerCase();
+  const locale =
+    pathParts.length > 0 && /^[a-z]{2}-[A-Z]{2}$/.test(pathParts[0])
+      ? pathParts[0]
+      : "";
+  const siteSegment =
+    locale && pathParts.length > 1 ? pathParts[1] : pathParts[0] ?? "";
+  const siteLower = siteSegment.toLowerCase();
+  const pathLower = normalizedPath.toLowerCase();
+  const hasSite =
+    siteLower &&
+    (pathLower === `/${siteLower}` ||
+      pathLower.startsWith(`/${siteLower}/`));
+  const hasLocale = /^\/[a-z]{2}-[A-Z]{2}\//.test(normalizedPath);
+
+  if (
+    hasSite ||
+    hasLocale ||
+    (basePathLower && pathLower.startsWith(basePathLower))
+  ) {
+    return `${url.origin}${normalizedPath}`;
+  }
+  if (basePath) {
+    return `${url.origin}${basePath}${normalizedPath}`;
+  }
+  if (siteSegment) {
+    return `${url.origin}/${siteSegment}${normalizedPath}`;
+  }
+  return `${url.origin}${normalizedPath}`;
+}
+
+function getWorkdayLocation(job: WorkdayJob): string | null {
+  if (job.locationsText) {
+    return job.locationsText;
+  }
+  const locationField = job.bulletFields?.find((field) => {
+    const label = field.label?.toLowerCase() ?? "";
+    return label === "location" || label === "locations";
+  });
+  return locationField?.value ?? null;
+}
+
+function getWorkdayPostedAt(job: WorkdayJob): string | null {
+  if (job.postedOnDate) {
+    const parsed = new Date(job.postedOnDate);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+  if (job.postedOn) {
+    const parsed = new Date(job.postedOn);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+  return null;
+}
+
+async function fetchWorkdayJobs(boardUrl: string, debug = false): Promise<WorkdayJob[]> {
+  const { origin, tenant, site } = await discoverWorkdaySite(boardUrl);
+  
+  if (debug) {
+    console.log(`  [DEBUG] Discovered: tenant=${tenant}, site=${site}`);
+  }
+
+  const apiUrl = `${origin}/wday/cxs/${tenant}/${site}/jobs`;
+  
+  if (debug) {
+    console.log(`  [DEBUG] API URL: ${apiUrl}`);
+  }
+
+  const jobs: WorkdayJob[] = [];
+  const limit = 20;
+  let offset = 0;
+
+  // Use the minimal headers from the working Reddit example
+  const headers = {
+    'accept': 'application/json',
+    'accept-language': 'en-US',
+    'content-type': 'application/json',
+    'origin': origin,
+    'referer': boardUrl,
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
+  };
+
+  while (true) {
+    const payload = {
+      appliedFacets: {},
+      limit,
+      offset,
+      searchText: "",
+    };
+
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        if (debug) {
+          const errorText = await response.text();
+          console.log(`  [DEBUG] Error ${response.status}: ${errorText.substring(0, 200)}`);
+        }
+        break;
+      }
+
+      const data = await response.json();
+      const jobPostings = data.jobPostings || [];
+
+      if (jobPostings.length === 0) {
+        break;
+      }
+
+      if (debug && offset === 0 && jobPostings.length > 0) {
+        console.log(`  [DEBUG] Sample job keys:`, Object.keys(jobPostings[0]).join(', '));
+      }
+
+      jobs.push(...jobPostings);
+      
+      if (debug && jobs.length % 100 === 0) {
+        console.log(`  [DEBUG] Fetched ${jobs.length} jobs so far...`);
+      }
+
+      // Check if we've reached the total
+      if (data.total && jobs.length >= data.total) {
+        break;
+      }
+
+      offset += limit;
+    } catch (error) {
+      if (debug) {
+        console.log(`  [DEBUG] Fetch error: ${error}`);
+      }
+      break;
+    }
+  }
+
+  if (debug) {
+    console.log(`  [DEBUG] Total jobs fetched: ${jobs.length}`);
+  }
+
+  return jobs;
+}
+
+function normalizeWorkdayJob(
+  companyName: string,
+  boardUrl: string,
+  job: WorkdayJob
+): NormalizedJob | null {
+  const externalId = job.jobReqId ?? job.externalPath ?? "";
+  if (!externalId) {
+    return null;
+  }
+  const title = job.title?.trim() ?? "";
+  if (!title) {
+    return null;
+  }
+  return {
+    companyName,
+    externalId,
+    title,
+    location: getWorkdayLocation(job),
+    postedAt: getWorkdayPostedAt(job),
+    jobUrl: buildWorkdayJobUrl(boardUrl, job.externalPath),
+    // NOTE: Workday list API doesn't include descriptions
+    // Would require fetching each job page individually (very slow)
+    descriptionText: null,
+  };
+}
+
 function getSupportedCompanies(companies: Company[]): Company[] {
   return companies.filter(
-    (company) => company.platform === "GREENHOUSE" || company.platform === "LEVER"
+    (company) =>
+      company.platform === "GREENHOUSE" ||
+      company.platform === "LEVER" ||
+      company.platform === "WORKDAY"
   );
 }
 
 async function main() {
   const startedAt = Date.now();
+  
+  // Setup logging
+  const logsDir = path.join(process.cwd(), "logs");
+  if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
+  }
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
+  const logFilePath = path.join(logsDir, `crawl-${timestamp}.log`);
+  const logStream = fs.createWriteStream(logFilePath, { flags: "a" });
+  
+  // Override console.log to write to both stdout and log file
+  const originalLog = console.log;
+  const originalError = console.error;
+  console.log = (...args: any[]) => {
+    const message = args.map(arg => typeof arg === "object" ? JSON.stringify(arg) : String(arg)).join(" ");
+    originalLog(...args);
+    logStream.write(message + "\n");
+  };
+  console.error = (...args: any[]) => {
+    const message = args.map(arg => typeof arg === "object" ? JSON.stringify(arg) : String(arg)).join(" ");
+    originalError(...args);
+    logStream.write("ERROR: " + message + "\n");
+  };
+  
   const keywordArg = process.argv.find((arg) => arg.startsWith("--keyword="));
   const keyword = keywordArg
     ? keywordArg.replace("--keyword=", "").trim().toLowerCase()
     : "";
+  const atsArg = process.argv.find((arg) => arg.startsWith("--ats="));
+  const atsFilter = atsArg
+    ? atsArg
+        .replace("--ats=", "")
+        .split(",")
+        .map((value) => value.trim().toUpperCase())
+        .filter(Boolean)
+    : [];
+  const debugMode = process.argv.includes("--debug");
+  
+  console.log(`Log file: ${logFilePath}`);
+  
   const companies = (await prisma.company.findMany({
     select: { id: true, name: true, platform: true, boardUrl: true },
   })) as Company[];
-  const supportedCompanies = getSupportedCompanies(companies);
+  let supportedCompanies = getSupportedCompanies(companies);
+  if (atsFilter.length > 0) {
+    const allowed = new Set(atsFilter);
+    supportedCompanies = supportedCompanies.filter((company) =>
+      allowed.has(company.platform)
+    );
+  }
 
   if (supportedCompanies.length === 0) {
-    console.log("No Greenhouse or Lever companies found.");
+    console.log("No Greenhouse, Lever, or Workday companies found.");
     return;
   }
 
@@ -175,6 +526,11 @@ async function main() {
         normalized = jobs
           .map((job) => normalizeLeverJob(company.name, job))
           .filter((job) => job.jobUrl);
+      } else if (company.platform === "WORKDAY") {
+        const jobs = await fetchWorkdayJobs(company.boardUrl, debugMode);
+        normalized = jobs
+          .map((job) => normalizeWorkdayJob(company.name, company.boardUrl, job))
+          .filter((job): job is NormalizedJob => Boolean(job && job.jobUrl));
       } else {
         console.log(`${company.name}: unsupported ATS (${company.platform})`);
         continue;
@@ -347,7 +703,12 @@ async function main() {
     }
     console.log("+------------------------------+---------------------------+");
   }
-
+  
+  // Close log stream
+  logStream.end();
+  // Restore original console methods
+  console.log = originalLog;
+  console.error = originalError;
 }
 
 main()

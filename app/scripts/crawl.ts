@@ -497,8 +497,10 @@ async function main() {
   let totalExistingCompanies = 0;
   let totalWorking = 0;
   let totalBroken = 0;
+  let totalDeactivated = 0;
   const jobsFoundByPlatform = new Map<string, number>();
   const jobsCreatedByPlatform = new Map<string, number>();
+  const jobsDeactivatedByPlatform = new Map<string, number>();
   const companiesByPlatform = new Map<string, number>();
   const nameColumnWidth = Math.max(
     12,
@@ -512,7 +514,7 @@ async function main() {
   console.log(
     `${"Company".padEnd(nameColumnWidth)}ATS${" ".repeat(
       Math.max(1, atsColumnWidth - 3)
-    )}Status  \t\tTotal Jobs  \t\tNew Jobs`
+    )}Status        Total Jobs     New Jobs       Deactivated`
   );
 
   for (const company of supportedCompanies) {
@@ -544,8 +546,12 @@ async function main() {
       }
 
       const existingJobs = await prisma.job.findMany({
-        where: { companyId: company.id, sourcePlatform: company.platform },
-        select: { externalId: true },
+        where: { 
+          companyId: company.id, 
+          sourcePlatform: company.platform,
+          status: "ACTIVE"
+        },
+        select: { id: true, externalId: true },
       });
       const existingIds = new Set(
         existingJobs
@@ -555,8 +561,27 @@ async function main() {
       const isNewCompany = existingIds.size === 0;
       let newJobsForCompany = 0;
 
+      // Get current job IDs from the board
+      const currentExternalIds = new Set(
+        normalized
+          .map((job) => job.externalId)
+          .filter((id): id is string => Boolean(id))
+      );
+
+      // Create new jobs
       for (const job of normalized) {
         if (existingIds.has(job.externalId)) {
+          // Update lastSeenAt for existing jobs
+          await prisma.job.updateMany({
+            where: {
+              companyId: company.id,
+              externalId: job.externalId,
+              sourcePlatform: company.platform,
+            },
+            data: {
+              lastSeenAt: new Date(),
+            },
+          });
           continue;
         }
 
@@ -584,6 +609,23 @@ async function main() {
         );
       }
 
+      // Deactivate jobs that are no longer on the board
+      let deactivatedJobsForCompany = 0;
+      for (const existingJob of existingJobs) {
+        if (existingJob.externalId && !currentExternalIds.has(existingJob.externalId)) {
+          await prisma.job.update({
+            where: { id: existingJob.id },
+            data: { status: "CLOSED" },
+          });
+          deactivatedJobsForCompany += 1;
+          totalDeactivated += 1;
+          jobsDeactivatedByPlatform.set(
+            company.platform,
+            (jobsDeactivatedByPlatform.get(company.platform) ?? 0) + 1
+          );
+        }
+      }
+
       totalJobs += normalized.length;
       jobsFoundByPlatform.set(
         company.platform,
@@ -609,12 +651,13 @@ async function main() {
         company.platform,
         (companiesByPlatform.get(company.platform) ?? 0) + 1
       );
-      const totalLabel = `\t${normalized.length}\tTotal Jobs`;
-      const newLabel = `\t${newJobsForCompany}\tNew Jobs`;
+      const totalLabel = `Total Jobs:${normalized.length}`;
+      const newLabel = `New Jobs:${newJobsForCompany}`;
+      const deactivatedLabel = `Deactivated:${deactivatedJobsForCompany}`;
       console.log(
         `${company.name.padEnd(nameColumnWidth)}${company.platform.padEnd(
           atsColumnWidth
-        )}${status.padEnd(7)}${totalLabel.padEnd(14)}${newLabel}`
+        )}${status.padEnd(7)}${totalLabel.padEnd(15)}${newLabel.padEnd(15)}${deactivatedLabel}`
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -664,6 +707,9 @@ async function main() {
     ).padEnd(25)}|`
   );
   console.log(
+    `| Total jobs deactivated       | ${String(totalDeactivated).padEnd(25)}|`
+  );
+  console.log(
     "+------------------------------+---------------------------+"
   );
   console.log(
@@ -693,10 +739,11 @@ async function main() {
     for (const platform of platforms) {
       const found = jobsFoundByPlatform.get(platform) ?? 0;
       const created = jobsCreatedByPlatform.get(platform) ?? 0;
+      const deactivated = jobsDeactivatedByPlatform.get(platform) ?? 0;
       const companies = companiesByPlatform.get(platform) ?? 0;
-      const label = `${platform} (found/created/companies)`;
+      const label = `${platform} (found/new/deact/co.)`;
       console.log(
-        `| ${label.padEnd(29)}| ${`${found}/${created}/${companies}`.padEnd(
+        `| ${label.padEnd(29)}| ${`${found}/${created}/${deactivated}/${companies}`.padEnd(
           25
         )}|`
       );

@@ -31,6 +31,7 @@ export async function GET(request: Request) {
   const sort = searchParams.get("sort")?.trim();
   const sortDir = searchParams.get("sortDir")?.trim().toLowerCase();
   const companyName = searchParams.get("companyName")?.trim();
+  const status = searchParams.get("status")?.trim();
 
   const page = Math.max(1, Number.parseInt(searchParams.get("page") ?? "1", 10));
   const pageSize = Math.min(
@@ -94,19 +95,24 @@ export async function GET(request: Request) {
     and.push({ company: { name: { contains: companyName, mode: "insensitive" } } });
   }
 
+  if (status) {
+    and.push({ status });
+  }
+
   const direction = sortDir === "asc" ? "asc" : "desc";
+  type SortDirection = "asc" | "desc";
   const orderBy =
     sort === "posted_at"
-      ? { postedAt: direction as const }
+      ? { postedAt: direction as SortDirection }
       : sort === "last_seen_at"
-      ? { lastSeenAt: direction as const }
+      ? { lastSeenAt: direction as SortDirection }
       : sort === "title"
-      ? { title: direction as const }
+      ? { title: direction as SortDirection }
       : sort === "created_at"
-      ? { createdAt: direction as const }
+      ? { createdAt: direction as SortDirection }
       : sort === "company"
-      ? { company: { name: direction as const } }
-      : { company: { name: "asc" as const } };
+      ? { company: { name: direction as SortDirection } }
+      : { company: { name: "asc" as SortDirection } };
 
   const whereClause = and.length > 0 ? where : undefined;
   const [jobs, total] = await Promise.all([

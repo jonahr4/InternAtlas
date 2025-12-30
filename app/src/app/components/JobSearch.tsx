@@ -10,8 +10,10 @@ type Job = {
   descriptionText: string | null;
   createdAt: string;
   sourcePlatform: string;
+  status: string;
   company: {
     name: string;
+    boardUrl: string;
   };
 };
 
@@ -38,8 +40,8 @@ const SORT_OPTIONS: SortOption[] = [
 ];
 
 const PAGE_SIZE = 50;
-const MIN_COLUMN_WIDTHS = [160, 240, 320, 160, 140, 140];
-const DEFAULT_COLUMN_WIDTHS = [220, 320, 460, 200, 160, 160];
+const MIN_COLUMN_WIDTHS = [160, 240, 320, 160, 100, 140, 140];
+const DEFAULT_COLUMN_WIDTHS = [220, 320, 460, 200, 120, 160, 160];
 
 function stripHtml(input: string): string {
   return input
@@ -99,7 +101,9 @@ export default function JobSearch() {
   const [titleQuery, setTitleQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
-  const [openFilter, setOpenFilter] = useState<"company" | "title" | "location" | null>(null);
+  const [statusOpen, setStatusOpen] = useState(true);
+  const [statusClosed, setStatusClosed] = useState(false);
+  const [openFilter, setOpenFilter] = useState<"company" | "title" | "location" | "status" | null>(null);
   const [sortOption, setSortOption] = useState(SORT_OPTIONS[0]);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<ApiResponse>({
@@ -137,6 +141,11 @@ export default function JobSearch() {
       if (locationFilter.trim()) {
         params.set("location", locationFilter.trim());
       }
+      if (statusOpen && !statusClosed) {
+        params.set("status", "ACTIVE");
+      } else if (!statusOpen && statusClosed) {
+        params.set("status", "CLOSED");
+      }
       params.set("page", String(nextPage));
       params.set("pageSize", String(PAGE_SIZE));
       params.set("sort", sortOption.sort);
@@ -158,7 +167,7 @@ export default function JobSearch() {
 
   useEffect(() => {
     fetchJobs(1);
-  }, [sortOption]);
+  }, [sortOption, statusOpen, statusClosed]);
 
   useEffect(() => {
     function onMouseMove(event: MouseEvent) {
@@ -356,6 +365,26 @@ export default function JobSearch() {
                   }}
                 />
               </th>
+              <th
+                className="relative cursor-pointer border-r border-zinc-200 px-3 py-2 font-medium"
+                onClick={() =>
+                  setOpenFilter(openFilter === "status" ? null : "status")
+                }
+              >
+                Status
+                <span
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize"
+                  onMouseDown={(event) => {
+                    resizeState.current = {
+                      index: 5,
+                      startX: event.clientX,
+                      startLeft: columnWidths[5],
+                      startRight: columnWidths[6],
+                    };
+                    document.body.style.cursor = "col-resize";
+                  }}
+                />
+              </th>
               <th className="relative px-3 py-2 font-medium">ATS</th>
             </tr>
             {openFilter ? (
@@ -407,6 +436,28 @@ export default function JobSearch() {
                   ) : null}
                 </th>
                 <th className="border-r border-zinc-200 px-3 py-2" />
+                <th className="border-r border-zinc-200 px-3 py-2">
+                  {openFilter === "status" ? (
+                    <div className="flex flex-col gap-1">
+                      <label className="flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={statusOpen}
+                          onChange={(e) => setStatusOpen(e.target.checked)}
+                        />
+                        Open
+                      </label>
+                      <label className="flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={statusClosed}
+                          onChange={(e) => setStatusClosed(e.target.checked)}
+                        />
+                        Closed
+                      </label>
+                    </div>
+                  ) : null}
+                </th>
                 <th />
               </tr>
             ) : null}
@@ -414,7 +465,7 @@ export default function JobSearch() {
           <tbody>
             {data.items.length === 0 ? (
               <tr>
-                <td className="px-3 py-3 text-zinc-500" colSpan={6}>
+                <td className="px-3 py-3 text-zinc-500" colSpan={7}>
                   No jobs found.
                 </td>
               </tr>
@@ -426,19 +477,29 @@ export default function JobSearch() {
                 const isExpanded = expandedId === job.id;
                 return (
                   <Fragment key={job.id}>
-                    <tr className="border-t hover:bg-zinc-50">
-                      <td className="border-r border-zinc-100 px-3 py-2">
-                        {job.company.name}
-                      </td>
+                    <tr className={`border-t hover:bg-zinc-50 ${job.status === "CLOSED" ? "opacity-60" : ""}`}>
                       <td className="border-r border-zinc-100 px-3 py-2">
                         <a
                           className="text-blue-600 hover:underline"
+                          href={job.company.boardUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {job.company.name}
+                        </a>
+                      </td>
+                      <td className="border-r border-zinc-100 px-3 py-2">
+                        <a
+                          className={`text-blue-600 hover:underline ${job.status === "CLOSED" ? "line-through" : ""}`}
                           href={job.jobUrl}
                           target="_blank"
                           rel="noreferrer"
                         >
                           {job.title}
                         </a>
+                        {job.status === "CLOSED" ? (
+                          <span className="ml-2 text-xs text-red-600">(Expired)</span>
+                        ) : null}
                       </td>
                       <td
                         className="border-r border-zinc-100 px-3 py-2 text-zinc-600"
@@ -454,11 +515,14 @@ export default function JobSearch() {
                       <td className="border-r border-zinc-100 px-3 py-2">
                         {formatDate(job.createdAt)}
                       </td>
+                      <td className="border-r border-zinc-100 px-3 py-2">
+                        {job.status === "ACTIVE" ? "OPEN" : "CLOSED"}
+                      </td>
                       <td className="px-3 py-2">{job.sourcePlatform}</td>
                     </tr>
                     {isExpanded ? (
                       <tr className="border-t bg-zinc-50">
-                        <td className="px-3 py-3 text-xs text-zinc-700" colSpan={6}>
+                        <td className="px-3 py-3 text-xs text-zinc-700" colSpan={7}>
                           <div className="rounded border border-zinc-200 bg-white p-3">
                             {plainDescription}
                           </div>

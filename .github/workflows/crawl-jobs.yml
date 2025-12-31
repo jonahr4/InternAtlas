@@ -29,6 +29,12 @@ jobs:
       - name: Generate Prisma Client
         working-directory: ./app
         run: npx prisma generate
+
+      - name: Run Prisma migrations
+        working-directory: ./app
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx prisma migrate deploy
       
       - name: Run crawler
         working-directory: ./app

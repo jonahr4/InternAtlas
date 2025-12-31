@@ -688,10 +688,10 @@ async function main() {
   let totalExistingCompanies = 0;
   let totalWorking = 0;
   let totalBroken = 0;
-  let totalDeactivated = 0;
+  let totalNewClosed = 0;
   const jobsFoundByPlatform = new Map<string, number>();
   const jobsCreatedByPlatform = new Map<string, number>();
-  const jobsDeactivatedByPlatform = new Map<string, number>();
+  const jobsClosedByPlatform = new Map<string, number>();
   const companiesByPlatform = new Map<string, number>();
   const nameColumnWidth = Math.min(
     50, // Cap at 50 characters max
@@ -761,6 +761,9 @@ async function main() {
         },
         select: { id: true, externalId: true, status: true, jobUrl: true },
       });
+      const closedBeforeCount = existingJobs.filter(
+        (job) => job.status === "CLOSED"
+      ).length;
       const existingJobsWithMatchId =
         company.platform === "WORKDAY"
           ? existingJobs.map((job) => ({
@@ -817,7 +820,7 @@ async function main() {
           .filter(([externalId]) => Boolean(externalId))
       );
 
-      let deactivatedJobsForCompany = 0;
+      let newClosedJobsForCompany = 0;
       if (company.platform === "WORKDAY") {
         // Close everything up front, then reactivate only what we see on the board.
         await prisma.job.updateMany({
@@ -942,18 +945,19 @@ async function main() {
           }
         }
 
-        deactivatedJobsForCompany = await prisma.job.count({
+        const closedAfterCount = await prisma.job.count({
           where: {
             companyId: company.id,
             sourcePlatform: "WORKDAY",
             status: "CLOSED",
           },
         });
-        totalDeactivated += deactivatedJobsForCompany;
-        jobsDeactivatedByPlatform.set(
+        newClosedJobsForCompany = Math.max(0, closedAfterCount - closedBeforeCount);
+        totalNewClosed += newClosedJobsForCompany;
+        jobsClosedByPlatform.set(
           company.platform,
-          (jobsDeactivatedByPlatform.get(company.platform) ?? 0) +
-            deactivatedJobsForCompany
+          (jobsClosedByPlatform.get(company.platform) ?? 0) +
+            newClosedJobsForCompany
         );
 
         if (debugMode) {
@@ -1063,14 +1067,15 @@ async function main() {
               where: { id: existingJob.id },
               data: { status: "CLOSED" },
             });
-            deactivatedJobsForCompany += 1;
-            totalDeactivated += 1;
-            jobsDeactivatedByPlatform.set(
-              company.platform,
-              (jobsDeactivatedByPlatform.get(company.platform) ?? 0) + 1
-            );
+            newClosedJobsForCompany += 1;
           }
         }
+        totalNewClosed += newClosedJobsForCompany;
+        jobsClosedByPlatform.set(
+          company.platform,
+          (jobsClosedByPlatform.get(company.platform) ?? 0) +
+            newClosedJobsForCompany
+        );
       }
 
       totalJobs += normalizedAll.length;
@@ -1099,7 +1104,13 @@ async function main() {
         (companiesByPlatform.get(company.platform) ?? 0) + 1
       );
       // Calculate total closed jobs for this company
-      const totalClosedJobs = existingJobs.filter(job => job.status === "CLOSED").length;
+      const totalClosedJobs = await prisma.job.count({
+        where: {
+          companyId: company.id,
+          sourcePlatform: company.platform,
+          status: "CLOSED",
+        },
+      });
       
       // Truncate long company names
       const displayName = company.name.length > 48 
@@ -1109,7 +1120,7 @@ async function main() {
       const totalLabel = `Total Jobs:${normalized.length}`;
       const newLabel = `New Jobs:${newJobsForCompany}`;
       const totalClosedLabel = `Total Closed:${totalClosedJobs}`;
-      const newClosedLabel = `New Closed:${deactivatedJobsForCompany}`;
+      const newClosedLabel = `New Closed:${newClosedJobsForCompany}`;
       console.log(
         `${displayName.padEnd(nameColumnWidth)}${company.platform.padEnd(
           atsColumnWidth
@@ -1163,7 +1174,7 @@ async function main() {
     ).padEnd(25)}|`
   );
   console.log(
-    `| Total jobs deactivated       | ${String(totalDeactivated).padEnd(25)}|`
+    `| Total jobs closed            | ${String(totalNewClosed).padEnd(25)}|`
   );
   console.log(
     "+------------------------------+---------------------------+"
@@ -1195,11 +1206,11 @@ async function main() {
     for (const platform of platforms) {
       const found = jobsFoundByPlatform.get(platform) ?? 0;
       const created = jobsCreatedByPlatform.get(platform) ?? 0;
-      const deactivated = jobsDeactivatedByPlatform.get(platform) ?? 0;
+      const closed = jobsClosedByPlatform.get(platform) ?? 0;
       const companies = companiesByPlatform.get(platform) ?? 0;
-      const label = `${platform} (found/new/deact/co.)`;
+      const label = `${platform} (found/new/closed/co.)`;
       console.log(
-        `| ${label.padEnd(29)}| ${`${found}/${created}/${deactivated}/${companies}`.padEnd(
+        `| ${label.padEnd(29)}| ${`${found}/${created}/${closed}/${companies}`.padEnd(
           25
         )}|`
       );

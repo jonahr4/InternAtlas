@@ -638,6 +638,8 @@ async function main() {
   const debugMode = process.argv.includes("--debug");
   const newOnlyMode = process.argv.includes("--new-only");
   const workdayVerifyMode = process.argv.includes("--workday-verify");
+  const workdayRepairMode = process.argv.includes("--repair-workday");
+  const workdayVerifyEnabled = workdayVerifyMode || workdayRepairMode;
   
   console.log(`Log file: ${logFilePath}`);
   
@@ -658,6 +660,11 @@ async function main() {
     const allowed = new Set(atsFilter);
     supportedCompanies = supportedCompanies.filter((company) =>
       allowed.has(company.platform)
+    );
+  }
+  if (workdayRepairMode) {
+    supportedCompanies = supportedCompanies.filter(
+      (company) => company.platform === "WORKDAY"
     );
   }
   if (companyFilters.length > 0) {
@@ -842,13 +849,23 @@ async function main() {
               Array.from(candidateIds).find(
                 (candidate) => candidate === existingJob.matchExternalId
               ) ?? existingJob.matchExternalId;
-            const updateData: Record<string, any> = {
-              lastSeenAt: new Date(),
-              status: "ACTIVE",
-            };
-            if (activeExternalId && existingJob.externalId !== activeExternalId) {
+          const updateData: Record<string, any> = {
+            lastSeenAt: new Date(),
+            status: "ACTIVE",
+          };
+          if (activeExternalId && existingJob.externalId !== activeExternalId) {
+            const conflict = await prisma.job.findFirst({
+              where: {
+                sourcePlatform: company.platform,
+                externalId: activeExternalId,
+                id: { not: existingJob.id },
+              },
+              select: { id: true },
+            });
+            if (!conflict) {
               updateData.externalId = activeExternalId;
             }
+          }
             await prisma.job.update({
               where: { id: existingJob.id },
               data: updateData,
@@ -893,7 +910,7 @@ async function main() {
           }
         }
 
-        if (workdayVerifyMode) {
+        if (workdayVerifyEnabled) {
           const closedJobs = await prisma.job.findMany({
             where: {
               companyId: company.id,

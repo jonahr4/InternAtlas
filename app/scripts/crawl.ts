@@ -637,9 +637,9 @@ async function main() {
     : [];
   const debugMode = process.argv.includes("--debug");
   const newOnlyMode = process.argv.includes("--new-only");
-  const workdayVerifyMode = process.argv.includes("--workday-verify");
+  const workdayVerifyDisabled = process.argv.includes("--no-workday-verify");
   const workdayRepairMode = process.argv.includes("--repair-workday");
-  const workdayVerifyEnabled = workdayVerifyMode || workdayRepairMode;
+  const workdayVerifyEnabled = !workdayVerifyDisabled;
   
   console.log(`Log file: ${logFilePath}`);
   

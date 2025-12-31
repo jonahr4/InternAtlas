@@ -3,13 +3,13 @@ name: Crawl Jobs
 on:
   schedule:
     # Run every 4 hours at minute 0
-    - cron: '0 */4 * * *'
+    - cron: '0 */6 * * *'
   workflow_dispatch: # Allow manual trigger
 
 jobs:
   crawl:
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 360
     
     steps:
       - name: Checkout code

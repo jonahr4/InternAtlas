@@ -8,6 +8,11 @@
     "start": "next start",
     "lint": "eslint",
     "crawl": "tsx scripts/crawl.ts",
+    "crawl:debug": "tsx scripts/crawl.ts --debug",
+    "crawl:new": "tsx scripts/crawl.ts --new-only",
+    "crawl:greenhouse": "tsx scripts/crawl.ts --ats=GREENHOUSE",
+    "crawl:lever": "tsx scripts/crawl.ts --ats=LEVER",
+    "crawl:workday": "tsx scripts/crawl.ts --ats=WORKDAY",
     "jobs:clear": "tsx scripts/clear-jobs.ts",
     "companies:export": "tsx scripts/export-companies.ts"
   },

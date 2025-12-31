@@ -282,6 +282,108 @@ function buildWorkdayJobUrl(boardUrl: string, externalPath?: string): string {
   return `${url.origin}${normalizedPath}`;
 }
 
+function getWorkdayCanonicalId(value?: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const underscored = value.match(/R\d{2}_\d{4,}/g);
+  if (underscored && underscored.length > 0) {
+    return underscored[underscored.length - 1];
+  }
+  const plain = value.match(/R\d{4,}/g);
+  if (plain && plain.length > 0) {
+    return plain[plain.length - 1];
+  }
+  return null;
+}
+
+function getWorkdayExternalId(job: WorkdayJob): string | null {
+  if (job.jobReqId) {
+    return job.jobReqId;
+  }
+  if (!job.externalPath) {
+    return null;
+  }
+  const canonical = getWorkdayCanonicalId(job.externalPath);
+  if (canonical) {
+    return canonical;
+  }
+  return job.externalPath;
+}
+
+async function mergeWorkdayDuplicates(companyId: string) {
+  const jobs = await prisma.job.findMany({
+    where: { companyId, sourcePlatform: "WORKDAY" },
+    select: {
+      id: true,
+      externalId: true,
+      jobUrl: true,
+      status: true,
+      lastSeenAt: true,
+      updatedAt: true,
+    },
+  });
+
+  const groups = new Map<string, typeof jobs>();
+  for (const job of jobs) {
+    const canonical =
+      getWorkdayCanonicalId(job.externalId) ??
+      getWorkdayCanonicalId(job.jobUrl) ??
+      null;
+    if (!canonical) {
+      continue;
+    }
+    const group = groups.get(canonical);
+    if (group) {
+      group.push(job);
+    } else {
+      groups.set(canonical, [job]);
+    }
+  }
+
+  for (const [canonicalId, group] of groups) {
+    if (group.length < 2) {
+      continue;
+    }
+    const sorted = [...group].sort((a, b) => {
+      if (a.status !== b.status) {
+        return a.status === "ACTIVE" ? -1 : 1;
+      }
+      if (a.lastSeenAt.getTime() !== b.lastSeenAt.getTime()) {
+        return b.lastSeenAt.getTime() - a.lastSeenAt.getTime();
+      }
+      return b.updatedAt.getTime() - a.updatedAt.getTime();
+    });
+    const keeper = sorted[0];
+    const duplicates = sorted.slice(1);
+    const shouldBeActive = group.some((job) => job.status === "ACTIVE");
+    const maxLastSeenAt = group.reduce(
+      (latest, job) =>
+        job.lastSeenAt.getTime() > latest.getTime() ? job.lastSeenAt : latest,
+      group[0].lastSeenAt
+    );
+    const jobUrl =
+      keeper.jobUrl ??
+      group.find((job) => Boolean(job.jobUrl))?.jobUrl ??
+      null;
+
+    await prisma.$transaction([
+      prisma.job.deleteMany({
+        where: { id: { in: duplicates.map((job) => job.id) } },
+      }),
+      prisma.job.update({
+        where: { id: keeper.id },
+        data: {
+          externalId: canonicalId,
+          status: shouldBeActive ? "ACTIVE" : keeper.status,
+          lastSeenAt: maxLastSeenAt,
+          ...(jobUrl ? { jobUrl } : {}),
+        },
+      }),
+    ]);
+  }
+}
+
 function getWorkdayLocation(job: WorkdayJob): string | null {
   if (job.locationsText) {
     return job.locationsText;
@@ -397,12 +499,67 @@ async function fetchWorkdayJobs(boardUrl: string, debug = false): Promise<Workda
   return jobs;
 }
 
+async function workdaySearchById(
+  boardUrl: string,
+  id: string,
+  debug = false
+): Promise<boolean> {
+  const { origin, tenant, site } = await discoverWorkdaySite(boardUrl);
+  const apiUrl = `${origin}/wday/cxs/${tenant}/${site}/jobs`;
+  const headers = {
+    accept: "application/json",
+    "accept-language": "en-US",
+    "content-type": "application/json",
+    origin,
+    referer: boardUrl,
+    "user-agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+  };
+  const payload = {
+    appliedFacets: {},
+    limit: 5,
+    offset: 0,
+    searchText: id,
+  };
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      if (debug) {
+        const errorText = await response.text();
+        console.log(
+          `  [DEBUG] Workday search ${response.status} for ${id}: ${errorText.substring(0, 120)}`
+        );
+      }
+      return false;
+    }
+    const data = await response.json();
+    const jobPostings = data.jobPostings || [];
+    return jobPostings.some((job: WorkdayJob) => {
+      const externalId = getWorkdayExternalId(job);
+      return (
+        (externalId && externalId === id) ||
+        (job.externalPath && job.externalPath.includes(id))
+      );
+    });
+  } catch (error) {
+    if (debug) {
+      console.log(`  [DEBUG] Workday search error for ${id}: ${error}`);
+    }
+    return false;
+  }
+}
+
 function normalizeWorkdayJob(
   companyName: string,
   boardUrl: string,
   job: WorkdayJob
 ): NormalizedJob | null {
-  const externalId = job.jobReqId ?? job.externalPath ?? "";
+  const externalId = getWorkdayExternalId(job) ?? "";
   if (!externalId) {
     return null;
   }
@@ -462,6 +619,14 @@ async function main() {
   const keyword = keywordArg
     ? keywordArg.replace("--keyword=", "").trim().toLowerCase()
     : "";
+  const companyArg = process.argv.find((arg) => arg.startsWith("--company="));
+  const companyFilters = companyArg
+    ? companyArg
+        .replace("--company=", "")
+        .split(",")
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean)
+    : [];
   const atsArg = process.argv.find((arg) => arg.startsWith("--ats="));
   const atsFilter = atsArg
     ? atsArg
@@ -472,6 +637,7 @@ async function main() {
     : [];
   const debugMode = process.argv.includes("--debug");
   const newOnlyMode = process.argv.includes("--new-only");
+  const workdayVerifyMode = process.argv.includes("--workday-verify");
   
   console.log(`Log file: ${logFilePath}`);
   
@@ -492,6 +658,13 @@ async function main() {
     const allowed = new Set(atsFilter);
     supportedCompanies = supportedCompanies.filter((company) =>
       allowed.has(company.platform)
+    );
+  }
+  if (companyFilters.length > 0) {
+    supportedCompanies = supportedCompanies.filter((company) =>
+      companyFilters.some((filter) =>
+        company.name.toLowerCase().includes(filter)
+      )
     );
   }
 
@@ -543,6 +716,7 @@ async function main() {
       }
 
       let normalized: NormalizedJob[] = [];
+      let workdayJobs: WorkdayJob[] | null = null;
       if (company.platform === "GREENHOUSE") {
         const jobs = await fetchGreenhouseJobs(company.boardUrl);
         normalized = jobs.map((job) => normalizeGreenhouseJob(company.name, job));
@@ -552,8 +726,8 @@ async function main() {
           .map((job) => normalizeLeverJob(company.name, job))
           .filter((job) => job.jobUrl);
       } else if (company.platform === "WORKDAY") {
-        const jobs = await fetchWorkdayJobs(company.boardUrl, debugMode);
-        normalized = jobs
+        workdayJobs = await fetchWorkdayJobs(company.boardUrl, debugMode);
+        normalized = workdayJobs
           .map((job) => normalizeWorkdayJob(company.name, company.boardUrl, job))
           .filter((job): job is NormalizedJob => Boolean(job && job.jobUrl));
       } else {
@@ -561,8 +735,10 @@ async function main() {
         continue;
       }
 
+      const normalizedAll = normalized;
+      let normalizedForCreate = normalizedAll;
       if (keyword) {
-        normalized = normalized.filter((job) => {
+        normalizedForCreate = normalizedAll.filter((job) => {
           const haystack = `${job.title} ${job.descriptionText ?? ""}`.toLowerCase();
           return haystack.includes(keyword);
         });
@@ -576,105 +752,314 @@ async function main() {
           sourcePlatform: company.platform,
           // ✅ Removed status filter - fetch ALL jobs
         },
-        select: { id: true, externalId: true, status: true },
+        select: { id: true, externalId: true, status: true, jobUrl: true },
       });
+      const existingJobsWithMatchId =
+        company.platform === "WORKDAY"
+          ? existingJobs.map((job) => ({
+              ...job,
+              matchExternalId:
+                getWorkdayCanonicalId(job.externalId) ??
+                getWorkdayCanonicalId(job.jobUrl) ??
+                job.externalId ??
+                null,
+            }))
+          : existingJobs.map((job) => ({
+              ...job,
+              matchExternalId: job.externalId ?? null,
+            }));
       
-      const existingActiveIds = new Set(
-        existingJobs
-          .filter((job) => job.status === "ACTIVE")
-          .map((job) => job.externalId)
-          .filter((id): id is string => Boolean(id))
-      );
       let newJobsForCompany = 0;
 
       // Get current job IDs from the board
       const currentExternalIds = new Set(
-        normalized
+        (company.platform === "WORKDAY" && workdayJobs
+          ? workdayJobs
+              .flatMap((job) => {
+                const ids = new Set<string>();
+                const externalId = getWorkdayExternalId(job);
+                if (externalId) {
+                  ids.add(externalId);
+                }
+                if (job.externalPath) {
+                  ids.add(job.externalPath);
+                }
+                const jobUrl = buildWorkdayJobUrl(
+                  company.boardUrl,
+                  job.externalPath
+                );
+                const canonicalFromUrl = getWorkdayCanonicalId(jobUrl);
+                if (canonicalFromUrl) {
+                  ids.add(canonicalFromUrl);
+                }
+                return Array.from(ids);
+              })
+              .filter((id): id is string => Boolean(id))
+          : normalizedAll
+              .map((job) => job.externalId)
+              .filter((id): id is string => Boolean(id)))
+      );
+      const createExternalIds = new Set(
+        normalizedForCreate
           .map((job) => job.externalId)
           .filter((id): id is string => Boolean(id))
       );
+      const existingJobsByExternalId = new Map(
+        existingJobsWithMatchId
+          .map((job) => [job.matchExternalId, job] as const)
+          .filter(([externalId]) => Boolean(externalId))
+      );
 
-      // Create or reactivate jobs
-      for (const job of normalized) {
-        // Check if this job already exists (in any status)
-        const existingJob = existingJobs.find(j => j.externalId === job.externalId);
-        
-        if (existingJob) {
-          // Update existing job: refresh lastSeenAt and ensure it's ACTIVE
-          await prisma.job.update({
-            where: { id: existingJob.id },
-            data: {
-              lastSeenAt: new Date(),
-              status: "ACTIVE", // ✅ Reactivate if it was wrongly closed
-            },
-          });
-          
-          // If it was previously CLOSED and we just reactivated it
-          if (existingJob.status === "CLOSED") {
-            newJobsForCompany += 1; // Count as "new" for logging
-          }
-          continue;
-        }
-
-        // Try to create the job - if it already exists (from another company with same board URL), skip it
-        try {
-          await prisma.job.create({
-            data: {
-              companyId: company.id,
-              title: job.title,
-              location: job.location,
-              postedAt: job.postedAt ? new Date(job.postedAt) : null,
-              jobUrl: job.jobUrl,
-              applyUrl: job.jobUrl,
-              descriptionText: job.descriptionText,
-              sourcePlatform: company.platform,
-              externalId: job.externalId,
-              status: "ACTIVE",
-            },
-          });
-
-          newJobsForCompany += 1;
-          totalCreated += 1;
-          jobsCreatedByPlatform.set(
-            company.platform,
-            (jobsCreatedByPlatform.get(company.platform) ?? 0) + 1
-          );
-        } catch (error: any) {
-          // Ignore unique constraint violations (job already exists from another company)
-          // Prisma error codes: P2002 = Unique constraint failed
-          if (error?.code !== 'P2002' && !error?.message?.includes('Unique constraint failed')) {
-            throw error; // Re-throw if it's not a duplicate error
-          }
-          // Silently skip duplicates
-        }
-      }
-
-      // Deactivate ACTIVE jobs that are no longer on the board
       let deactivatedJobsForCompany = 0;
-      for (const existingJob of existingJobs) {
-        // Only close jobs that are currently ACTIVE and not found on the board
-        if (
-          existingJob.status === "ACTIVE" &&
-          existingJob.externalId && 
-          !currentExternalIds.has(existingJob.externalId)
-        ) {
-          await prisma.job.update({
-            where: { id: existingJob.id },
-            data: { status: "CLOSED" },
+      if (company.platform === "WORKDAY") {
+        // Close everything up front, then reactivate only what we see on the board.
+        await prisma.job.updateMany({
+          where: { companyId: company.id, sourcePlatform: "WORKDAY" },
+          data: { status: "CLOSED" },
+        });
+
+        const normalizedByExternalId = new Map(
+          normalizedAll.map((job) => [job.externalId, job] as const)
+        );
+        const activatedIds = new Set<string>();
+
+        for (const job of normalizedAll) {
+          const candidateIds = new Set<string>();
+          if (job.externalId) {
+            candidateIds.add(job.externalId);
+          }
+          const canonicalFromUrl = getWorkdayCanonicalId(job.jobUrl);
+          if (canonicalFromUrl) {
+            candidateIds.add(canonicalFromUrl);
+          }
+
+          const existingJob = Array.from(candidateIds)
+            .map((candidate) => existingJobsByExternalId.get(candidate))
+            .find(Boolean);
+
+          if (existingJob) {
+            const activeExternalId =
+              Array.from(candidateIds).find(
+                (candidate) => candidate === existingJob.matchExternalId
+              ) ?? existingJob.matchExternalId;
+            const updateData: Record<string, any> = {
+              lastSeenAt: new Date(),
+              status: "ACTIVE",
+            };
+            if (activeExternalId && existingJob.externalId !== activeExternalId) {
+              updateData.externalId = activeExternalId;
+            }
+            await prisma.job.update({
+              where: { id: existingJob.id },
+              data: updateData,
+            });
+            activatedIds.add(existingJob.matchExternalId ?? job.externalId);
+            if (existingJob.status === "CLOSED") {
+              newJobsForCompany += 1;
+            }
+            continue;
+          }
+
+          try {
+            await prisma.job.create({
+              data: {
+                companyId: company.id,
+                title: job.title,
+                location: job.location,
+                postedAt: job.postedAt ? new Date(job.postedAt) : null,
+                jobUrl: job.jobUrl,
+                applyUrl: job.jobUrl,
+                descriptionText: job.descriptionText,
+                sourcePlatform: company.platform,
+                externalId: job.externalId,
+                status: "ACTIVE",
+              },
+            });
+
+            activatedIds.add(job.externalId);
+            newJobsForCompany += 1;
+            totalCreated += 1;
+            jobsCreatedByPlatform.set(
+              company.platform,
+              (jobsCreatedByPlatform.get(company.platform) ?? 0) + 1
+            );
+          } catch (error: any) {
+            if (
+              error?.code !== "P2002" &&
+              !error?.message?.includes("Unique constraint failed")
+            ) {
+              throw error;
+            }
+          }
+        }
+
+        if (workdayVerifyMode) {
+          const closedJobs = await prisma.job.findMany({
+            where: {
+              companyId: company.id,
+              sourcePlatform: "WORKDAY",
+              status: "CLOSED",
+            },
+            select: { id: true, externalId: true, jobUrl: true, status: true },
           });
-          deactivatedJobsForCompany += 1;
-          totalDeactivated += 1;
-          jobsDeactivatedByPlatform.set(
-            company.platform,
-            (jobsDeactivatedByPlatform.get(company.platform) ?? 0) + 1
+          for (const closedJob of closedJobs) {
+            const canonical =
+              getWorkdayCanonicalId(closedJob.externalId) ??
+              getWorkdayCanonicalId(closedJob.jobUrl);
+            if (!canonical) {
+              continue;
+            }
+            const found = await workdaySearchById(
+              company.boardUrl,
+              canonical,
+              debugMode
+            );
+            if (!found) {
+              continue;
+            }
+            await prisma.job.update({
+              where: { id: closedJob.id },
+              data: { status: "ACTIVE", lastSeenAt: new Date() },
+            });
+            newJobsForCompany += 1;
+          }
+        }
+
+        deactivatedJobsForCompany = await prisma.job.count({
+          where: {
+            companyId: company.id,
+            sourcePlatform: "WORKDAY",
+            status: "CLOSED",
+          },
+        });
+        totalDeactivated += deactivatedJobsForCompany;
+        jobsDeactivatedByPlatform.set(
+          company.platform,
+          (jobsDeactivatedByPlatform.get(company.platform) ?? 0) +
+            deactivatedJobsForCompany
+        );
+
+        if (debugMode) {
+          const closedSample = await prisma.job.findMany({
+            where: {
+              companyId: company.id,
+              sourcePlatform: "WORKDAY",
+              status: "CLOSED",
+            },
+            select: { id: true, title: true, externalId: true, jobUrl: true },
+            take: 15,
+          });
+          const boardIdSet = new Set(currentExternalIds);
+          console.log(
+            `  [DEBUG] Closed jobs after crawl: ${deactivatedJobsForCompany}`
           );
+          console.log(
+            `  [DEBUG] Board IDs count: ${boardIdSet.size}, normalized jobs: ${normalizedAll.length}`
+          );
+          for (const job of closedSample) {
+            const canonicalExternal = getWorkdayCanonicalId(job.externalId);
+            const canonicalUrl = getWorkdayCanonicalId(job.jobUrl);
+            const matchesBoard =
+              (job.externalId && boardIdSet.has(job.externalId)) ||
+              (canonicalExternal && boardIdSet.has(canonicalExternal)) ||
+              (canonicalUrl && boardIdSet.has(canonicalUrl));
+            console.log(
+              `  [DEBUG] CLOSED: ${job.title ?? "Untitled"} | externalId=${
+                job.externalId ?? "null"
+              } | canonicalExt=${canonicalExternal ?? "null"} | canonicalUrl=${
+                canonicalUrl ?? "null"
+              } | onBoard=${matchesBoard}`
+            );
+          }
+        }
+
+        await mergeWorkdayDuplicates(company.id);
+      } else {
+        // Create or reactivate jobs
+        for (const job of normalizedAll) {
+          if (!job.externalId) {
+            continue;
+          }
+          const existingJob = existingJobsByExternalId.get(job.externalId);
+          if (existingJob) {
+            const updateData: Record<string, any> = {
+              lastSeenAt: new Date(),
+              status: "ACTIVE",
+            };
+            if (existingJob.externalId !== job.externalId) {
+              updateData.externalId = job.externalId;
+            }
+            await prisma.job.update({
+              where: { id: existingJob.id },
+              data: updateData,
+            });
+            if (existingJob.status === "CLOSED") {
+              newJobsForCompany += 1;
+            }
+            continue;
+          }
+
+          if (!createExternalIds.has(job.externalId)) {
+            continue;
+          }
+
+          try {
+            await prisma.job.create({
+              data: {
+                companyId: company.id,
+                title: job.title,
+                location: job.location,
+                postedAt: job.postedAt ? new Date(job.postedAt) : null,
+                jobUrl: job.jobUrl,
+                applyUrl: job.jobUrl,
+                descriptionText: job.descriptionText,
+                sourcePlatform: company.platform,
+                externalId: job.externalId,
+                status: "ACTIVE",
+              },
+            });
+
+            newJobsForCompany += 1;
+            totalCreated += 1;
+            jobsCreatedByPlatform.set(
+              company.platform,
+              (jobsCreatedByPlatform.get(company.platform) ?? 0) + 1
+            );
+          } catch (error: any) {
+            if (
+              error?.code !== "P2002" &&
+              !error?.message?.includes("Unique constraint failed")
+            ) {
+              throw error;
+            }
+          }
+        }
+
+        // Deactivate ACTIVE jobs that are no longer on the board
+        for (const existingJob of existingJobsWithMatchId) {
+          if (
+            existingJob.status === "ACTIVE" &&
+            existingJob.matchExternalId &&
+            !currentExternalIds.has(existingJob.matchExternalId)
+          ) {
+            await prisma.job.update({
+              where: { id: existingJob.id },
+              data: { status: "CLOSED" },
+            });
+            deactivatedJobsForCompany += 1;
+            totalDeactivated += 1;
+            jobsDeactivatedByPlatform.set(
+              company.platform,
+              (jobsDeactivatedByPlatform.get(company.platform) ?? 0) + 1
+            );
+          }
         }
       }
 
-      totalJobs += normalized.length;
+      totalJobs += normalizedAll.length;
       jobsFoundByPlatform.set(
         company.platform,
-        (jobsFoundByPlatform.get(company.platform) ?? 0) + normalized.length
+        (jobsFoundByPlatform.get(company.platform) ?? 0) + normalizedAll.length
       );
       totalWorking += 1;
 

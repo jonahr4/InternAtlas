@@ -41,6 +41,8 @@ const SORT_OPTIONS: SortOption[] = [
   { label: "Title (Z-A)", sort: "title", sortDir: "desc" },
   { label: "Date Found (Newest)", sort: "created_at", sortDir: "desc" },
   { label: "Date Found (Oldest)", sort: "created_at", sortDir: "asc" },
+  { label: "Date Updated (Newest)", sort: "updated_at", sortDir: "desc" },
+  { label: "Date Updated (Oldest)", sort: "updated_at", sortDir: "asc" },
 ];
 
 const PAGE_SIZE = 50;

@@ -203,7 +203,6 @@ export default function JobSearch() {
       statusOpen,
       statusClosed,
       sortOption,
-      page,
       ...(options.overrideState ?? {}),
       page: nextPage,
     };

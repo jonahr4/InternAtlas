@@ -643,9 +643,24 @@ async function main() {
   
   console.log(`Log file: ${logFilePath}`);
   
-  const companies = (await prisma.company.findMany({
-    select: { id: true, name: true, platform: true, boardUrl: true, firstCrawledAt: true },
-  })) as Company[];
+  const companiesFromDb = await prisma.company.findMany({
+    select: {
+      id: true,
+      name: true,
+      platform: true,
+      boardUrl: true,
+      firstCrawledAt: true,
+    },
+  } as any);
+  
+  const companies: Company[] = companiesFromDb.map((c) => ({
+    id: c.id,
+    name: c.name,
+    platform: c.platform as Company["platform"],
+    boardUrl: c.boardUrl,
+    firstCrawledAt: (c as { firstCrawledAt?: Date | null }).firstCrawledAt ?? null,
+  }));
+  
   let supportedCompanies = getSupportedCompanies(companies);
   
   // Filter for companies that have never been crawled
@@ -689,6 +704,7 @@ async function main() {
   let totalWorking = 0;
   let totalBroken = 0;
   let totalNewClosed = 0;
+  let totalCurrentlyClosed = 0;
   const jobsFoundByPlatform = new Map<string, number>();
   const jobsCreatedByPlatform = new Map<string, number>();
   const jobsClosedByPlatform = new Map<string, number>();
@@ -718,7 +734,7 @@ async function main() {
         // Mark as seen so subsequent runs treat it as OLD, even if inserts fail
         await prisma.company.update({
           where: { id: company.id },
-          data: { firstCrawledAt: new Date() },
+          data: { firstCrawledAt: new Date() } as any,
         });
       }
 
@@ -960,40 +976,6 @@ async function main() {
             newClosedJobsForCompany
         );
 
-        if (debugMode) {
-          const closedSample = await prisma.job.findMany({
-            where: {
-              companyId: company.id,
-              sourcePlatform: "WORKDAY",
-              status: "CLOSED",
-            },
-            select: { id: true, title: true, externalId: true, jobUrl: true },
-            take: 15,
-          });
-          const boardIdSet = new Set(currentExternalIds);
-          console.log(
-            `  [DEBUG] Closed jobs after crawl: ${deactivatedJobsForCompany}`
-          );
-          console.log(
-            `  [DEBUG] Board IDs count: ${boardIdSet.size}, normalized jobs: ${normalizedAll.length}`
-          );
-          for (const job of closedSample) {
-            const canonicalExternal = getWorkdayCanonicalId(job.externalId);
-            const canonicalUrl = getWorkdayCanonicalId(job.jobUrl);
-            const matchesBoard =
-              (job.externalId && boardIdSet.has(job.externalId)) ||
-              (canonicalExternal && boardIdSet.has(canonicalExternal)) ||
-              (canonicalUrl && boardIdSet.has(canonicalUrl));
-            console.log(
-              `  [DEBUG] CLOSED: ${job.title ?? "Untitled"} | externalId=${
-                job.externalId ?? "null"
-              } | canonicalExt=${canonicalExternal ?? "null"} | canonicalUrl=${
-                canonicalUrl ?? "null"
-              } | onBoard=${matchesBoard}`
-            );
-          }
-        }
-
         await mergeWorkdayDuplicates(company.id);
       } else {
         // Create or reactivate jobs
@@ -1112,6 +1094,8 @@ async function main() {
         },
       });
       
+      totalCurrentlyClosed += totalClosedJobs;
+      
       // Truncate long company names
       const displayName = company.name.length > 48 
         ? company.name.substring(0, 45) + "..." 
@@ -1174,7 +1158,10 @@ async function main() {
     ).padEnd(25)}|`
   );
   console.log(
-    `| Total jobs closed            | ${String(totalNewClosed).padEnd(25)}|`
+    `| Total jobs currently closed  | ${String(totalCurrentlyClosed).padEnd(25)}|`
+  );
+  console.log(
+    `| Jobs newly closed this crawl | ${String(totalNewClosed).padEnd(25)}|`
   );
   console.log(
     "+------------------------------+---------------------------+"
@@ -1235,14 +1222,16 @@ async function backupCompaniesToCSV() {
     });
 
     const headers = ["id", "name", "platform", "boardUrl", "createdAt", "updatedAt", "firstCrawledAt"];
-    const rows = companies.map(company => [
-      company.id,
-      company.name,
-      company.platform,
-      company.boardUrl,
-      company.createdAt.toISOString(),
-      company.updatedAt.toISOString(),
-      company.firstCrawledAt ? company.firstCrawledAt.toISOString() : "",
+    const rows = (companies as Array<
+      (typeof companies)[number] & { firstCrawledAt?: Date | null }
+    >).map((row) => [
+      row.id,
+      row.name,
+      row.platform,
+      row.boardUrl,
+      row.createdAt.toISOString(),
+      row.updatedAt.toISOString(),
+      row.firstCrawledAt ? row.firstCrawledAt.toISOString() : "",
     ]);
 
     const escapeCsvField = (field: string) => {

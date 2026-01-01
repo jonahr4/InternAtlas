@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import JobSearch from "@/app/components/JobSearch";
 
 export default function Home() {
@@ -41,7 +41,9 @@ export default function Home() {
         </p>
       </div>
 
-      <JobSearch />
+      <Suspense fallback={<div className="text-center text-sm text-slate-600">Loading jobs…</div>}>
+        <JobSearch />
+      </Suspense>
     </main>
   );
 }

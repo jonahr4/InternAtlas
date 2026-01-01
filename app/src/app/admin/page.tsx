@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type ApiResponse = {
   added: number;
@@ -13,6 +13,12 @@ type ApiResponse = {
 };
 
 export default function AdminPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  
   const [urls, setUrls] = useState("");
   const [response, setResponse] = useState<ApiResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -21,6 +27,95 @@ export default function AdminPage() {
   const [roleA, setRoleA] = useState("Software Developer");
   const [roleB, setRoleB] = useState("Software Engineer");
   const [location, setLocation] = useState("united states");
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  async function checkAuth() {
+    try {
+      const res = await fetch("/api/admin/auth");
+      const data = await res.json();
+      setIsAuthenticated(data.authenticated);
+    } catch {
+      setIsAuthenticated(false);
+    } finally {
+      setIsCheckingAuth(false);
+    }
+  }
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setIsLoggingIn(true);
+    setAuthError("");
+
+    try {
+      const res = await fetch("/api/admin/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setIsAuthenticated(true);
+        setPassword("");
+      } else {
+        setAuthError("Invalid password");
+      }
+    } catch {
+      setAuthError("Login failed. Please try again.");
+    } finally {
+      setIsLoggingIn(false);
+    }
+  }
+
+  if (isCheckingAuth) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-md items-center justify-center px-6">
+        <div className="text-zinc-600">Loading...</div>
+      </main>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-md items-center justify-center px-6">
+        <div className="w-full rounded-lg border border-zinc-200 bg-white p-8 shadow-md">
+          <h1 className="text-2xl font-semibold text-zinc-900">Admin Login</h1>
+          <p className="mt-2 text-sm text-zinc-600">
+            Enter the password to access the admin dashboard.
+          </p>
+          <form onSubmit={handleLogin} className="mt-6 space-y-4">
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-zinc-700">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                className="mt-1 h-10 w-full rounded border border-zinc-200 px-3 text-sm"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoFocus
+              />
+            </div>
+            {authError && (
+              <div className="text-sm text-red-600">{authError}</div>
+            )}
+            <button
+              type="submit"
+              disabled={isLoggingIn}
+              className="h-10 w-full rounded bg-zinc-900 text-sm font-medium text-white disabled:opacity-60"
+            >
+              {isLoggingIn ? "Logging in..." : "Login"}
+            </button>
+          </form>
+        </div>
+      </main>
+    );
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

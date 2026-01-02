@@ -3,32 +3,27 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
-  // Aggregate job counts and rough text sizes per company
-  const [totalJobs, companyStats] = await Promise.all([
+  // Aggregate counts; estimate size proportionally to table size to avoid full scans
+  const [totalJobs, totalTableSize, companyCounts] = await Promise.all([
     prisma.job.count(),
+    prisma
+      .$queryRawUnsafe<Array<{ size: bigint }>>(
+        `SELECT pg_total_relation_size('"Job"') as size`
+      )
+      .then((rows) => Number(rows?.[0]?.size ?? 0)),
     prisma.$queryRaw<
       Array<{
         id: string;
         name: string;
         boardurl: string;
         jobcount: bigint;
-        bytesize: bigint | null;
       }>
     >`
       SELECT
         c.id,
         c.name,
         c."boardUrl" as boardurl,
-        COUNT(j.*) AS jobcount,
-        SUM(
-          LENGTH(COALESCE(j.title, '')) +
-          LENGTH(COALESCE(j.location, '')) +
-          LENGTH(COALESCE(j.jobUrl, '')) +
-          LENGTH(COALESCE(j.applyUrl, '')) +
-          LENGTH(COALESCE(j."descriptionText", '')) +
-          LENGTH(COALESCE(j."requirementsText", '')) +
-          LENGTH(COALESCE(j."rawPayload"::text, ''))
-        ) AS bytesize
+        COUNT(j.*) AS jobcount
       FROM "Company" c
       LEFT JOIN "Job" j ON j."companyId" = c.id
       GROUP BY c.id
@@ -36,13 +31,18 @@ export async function GET() {
     `,
   ]);
 
-  const companies = companyStats.map((row) => ({
-    id: row.id,
-    name: row.name,
-    boardUrl: row.boardurl,
-    jobCount: Number(row.jobcount ?? 0),
-    byteSize: Number(row.bytesize ?? 0),
-  }));
+  const companies = companyCounts.map((row) => {
+    const jobCount = Number(row.jobcount ?? 0);
+    const byteSize =
+      totalJobs > 0 ? Math.round((jobCount / totalJobs) * Number(totalTableSize)) : 0;
+    return {
+      id: row.id,
+      name: row.name,
+      boardUrl: row.boardurl,
+      jobCount,
+      byteSize,
+    };
+  });
 
   return NextResponse.json({ totalJobs, companies });
 }

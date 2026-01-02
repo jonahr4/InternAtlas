@@ -969,7 +969,7 @@ async function main() {
       const existingJobs = await prisma.job.findMany({
         where: { 
           companyId: company.id, 
-          sourcePlatform: company.platform,
+          sourcePlatform: company.platform as any,
           // ✅ Removed status filter - fetch ALL jobs
         },
         select: { id: true, externalId: true, status: true, jobUrl: true },

@@ -40,7 +40,7 @@ type WorkdayJob = {
 type Company = {
   id: string;
   name: string;
-  platform: "GREENHOUSE" | "LEVER" | "WORKDAY" | "CUSTOM";
+  platform: "GREENHOUSE" | "LEVER" | "WORKDAY" | "ICIMS" | "CUSTOM";
   boardUrl: string;
   firstCrawledAt: Date | null;
 };
@@ -636,7 +636,8 @@ async function main() {
         .filter(Boolean)
     : [];
   const debugMode = process.argv.includes("--debug");
-  const newOnlyMode = process.argv.includes("--new-only");
+  const newOnlyMode =
+    process.argv.includes("--new-only") || process.argv.includes("--new");
   const workdayVerifyDisabled = process.argv.includes("--no-workday-verify");
   const workdayRepairMode = process.argv.includes("--repair-workday");
   const workdayVerifyEnabled = !workdayVerifyDisabled;

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 type RequestBody = {
   urls?: string;
   method?: "google" | "html";
-  ats?: "GREENHOUSE" | "LEVER" | "WORKDAY" | "CUSTOM";
+  ats?: "GREENHOUSE" | "LEVER" | "WORKDAY" | "ICIMS" | "CUSTOM";
 };
 
 function extractGreenhouseSlugs(input: string): string[] {
@@ -205,6 +205,46 @@ function extractWorkdayBoards(input: string): { name: string; boardUrl: string }
   }));
 }
 
+function extractIcimsBoards(input: string): { name: string; boardUrl: string }[] {
+  const normalizedInput = input.replace(/&amp;/g, "&");
+  const urlMatches = normalizedInput.match(/https?:\/\/[^\s]+/g) ?? [];
+  const boards = new Map<string, string>();
+
+  for (const rawUrl of urlMatches) {
+    try {
+      const cleanUrl = rawUrl
+        .split('"')[0]
+        .split("'")[0]
+        .split(">")[0]
+        .split("&sa=")[0]
+        .split("?utm")[0]
+        .split("&ved=")[0]
+        .split("#")[0];
+      const url = new URL(cleanUrl);
+      if (!url.hostname.endsWith("icims.com")) {
+        continue;
+      }
+      const host = url.hostname; // e.g., careers-appliedsystems.icims.com
+      const firstLabel = host.split(".")[0] ?? "";
+      const cleanedLabel = firstLabel
+        .replace(/^careers-?/i, "")
+        .replace(/-careers$/i, "")
+        .trim();
+      const nameSlug = cleanedLabel || firstLabel || host;
+      // Use canonical search path; ignore current path fragments
+      const boardUrl = `${url.protocol}//${host}/jobs/search?ss=1`;
+      boards.set(nameSlug, boardUrl);
+    } catch {
+      continue;
+    }
+  }
+
+  return Array.from(boards.entries()).map(([name, boardUrl]) => ({
+    name: nameFromSlug(name),
+    boardUrl,
+  }));
+}
+
 function nameFromSlug(slug: string): string {
   return slug
     .replace(/[-_]+/g, " ")
@@ -231,8 +271,9 @@ export async function POST(request: Request) {
   }
 
   const slugs =
-    ats === "LEVER" ? extractLeverSlugs(input) : extractGreenhouseSlugs(input);
+    ats === "LEVER" ? extractLeverSlugs(input) : ats === "GREENHOUSE" ? extractGreenhouseSlugs(input) : [];
   const workdayBoards = ats === "WORKDAY" ? extractWorkdayBoards(input) : [];
+  const icimsBoards = ats === "ICIMS" ? extractIcimsBoards(input) : [];
   let added = 0;
   let updated = 0;
   let skipped = 0;
@@ -242,6 +283,8 @@ export async function POST(request: Request) {
   const workItems =
     ats === "WORKDAY"
       ? workdayBoards
+      : ats === "ICIMS"
+      ? icimsBoards
       : slugs.map((slug) => ({
           name: nameFromSlug(slug),
           boardUrl:
@@ -290,7 +333,8 @@ export async function POST(request: Request) {
         added += 1;
         addedUrls.push({ name, url: boardUrl });
       }
-    } catch {
+    } catch (error) {
+      console.error(`Error processing ${name} (${boardUrl}):`, error);
       skipped += 1;
     }
   }

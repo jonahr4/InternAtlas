@@ -25,6 +25,7 @@ enum SourcePlatform {
   GREENHOUSE
   LEVER
   WORKDAY
+  ICIMS
   CUSTOM
 }
 

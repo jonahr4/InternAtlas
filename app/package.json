@@ -13,6 +13,7 @@
     "crawl:greenhouse": "tsx scripts/crawl.ts --ats=GREENHOUSE",
     "crawl:lever": "tsx scripts/crawl.ts --ats=LEVER",
     "crawl:workday": "tsx scripts/crawl.ts --ats=WORKDAY",
+    "crawl:workday:new": "tsx scripts/crawl.ts --ats=WORKDAY --new-only",
     "crawl:workday:repair": "tsx scripts/crawl.ts --repair-workday",
     "jobs:clear": "tsx scripts/clear-jobs.ts",
     "companies:export": "tsx scripts/export-companies.ts"

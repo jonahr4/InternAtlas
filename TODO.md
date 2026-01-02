@@ -120,7 +120,14 @@ After deployed, fix front end with authentication and advanced features
 - [ ] Add Postgres full-text search (tsvector + GIN index)
 - [ ] Optional: AI match endpoint + UI
 
+## ATS Connections
+- [x] Greenhouse adapter (boards-api.greenhouse.io)
+- [x] Lever adapter (api.lever.co)
+- [x] Workday adapter (wday/cxs)
+- [ ] iCIMS adapter (search: `site:icims.com ("jobs/search" OR "careers") ("Software Engineer" OR "Software Developer") "United States"`)
+- [ ] SmartRecruiters adapter (search: `site:smartrecruiters.com ("jobs" OR "careers") ("Software Engineer" OR "Software Developer") "United States"`)
+- [ ] Ashby adapter (search: `site:ashbyhq.com/jobs ("Software Engineer" OR "Software Developer") "United States"`)
+
 
 ##
 Redefine porblem statment and what solutuion would be. Problem is i dont trust job boards that all posts different jobs giving me the feeling im missing on jobs that arent posting. Also its too hard to track all differnt companies individial. Solutuon: this free and assessable Master list that is really easy to use and has Huge Job data base that is easily filterable to what users are looking for and updated daily off of a huge list of companies . I feel like smth like this doesnt exisit 
-

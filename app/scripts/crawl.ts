@@ -37,6 +37,14 @@ type WorkdayJob = {
   jobReqId?: string;
 };
 
+type IcimsJob = {
+  title: string;
+  location: string | null;
+  jobUrl: string;
+  externalId: string | null;
+  description: string | null;
+};
+
 type Company = {
   id: string;
   name: string;
@@ -311,6 +319,10 @@ function getWorkdayExternalId(job: WorkdayJob): string | null {
   return job.externalPath;
 }
 
+function stripHtmlTags(input: string): string {
+  return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
 async function mergeWorkdayDuplicates(companyId: string) {
   const jobs = await prisma.job.findMany({
     where: { companyId, sourcePlatform: "WORKDAY" },
@@ -580,12 +592,191 @@ function normalizeWorkdayJob(
   };
 }
 
+function getIcimsSearchUrl(boardUrl: string): string {
+  try {
+    const url = new URL(boardUrl);
+    // Normalize to /jobs/search?ss=1
+    url.pathname = "/jobs/search";
+    const params = url.searchParams;
+    if (!params.get("ss")) {
+      params.set("ss", "1");
+    }
+    if (!params.get("in_iframe")) {
+      params.set("in_iframe", "1");
+    }
+    url.search = params.toString();
+    return url.toString();
+  } catch {
+    return boardUrl;
+  }
+}
+
+function parseIcimsJobs(html: string, baseUrl: string, debug = false): IcimsJob[] {
+  const jobs: IcimsJob[] = [];
+  
+  if (!html.includes("iCIMS_JobsTable")) {
+    if (debug) {
+      console.log(`  [DEBUG] No iCIMS_JobsTable found in page`);
+    }
+    return jobs;
+  }
+
+  // Updated regex: href comes BEFORE class in the HTML
+  const anchorRegex =
+    /href="([^"]+)"[^>]*class="iCIMS_Anchor"[^>]*>[\s\S]*?<h3[^>]*>([\s\S]*?)<\/h3>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = anchorRegex.exec(html)) !== null) {
+    const href = match[1];
+    const title = stripHtmlTags(match[2]);
+    
+    if (!title) continue;
+
+    const anchorPos = match.index;
+    const rowStart = html.lastIndexOf('<div class="row', anchorPos);
+    const nextRow = html.indexOf('<div class="row', anchorPos + match[0].length);
+    const row =
+      rowStart >= 0
+        ? html.substring(
+            rowStart,
+            nextRow > rowStart ? nextRow : anchorPos + match[0].length + 4000
+          )
+        : match[0];
+
+    const jobUrl = href.startsWith("http")
+      ? href
+      : new URL(href, baseUrl).toString();
+
+    // Match <span> with any attributes (e.g., <span > or <span class="...">)
+    // Try multiple location patterns:
+    // 1. "Job Locations" field in header (Applied Systems style)
+    const locMatch =
+      row.match(/field-label">Job Locations<\/span>\s*<span[^>]*>\s*([\s\S]*?)<\/span>/i) ??
+      row.match(/field-label">Location<\/span>\s*<span[^>]*>\s*([\s\S]*?)<\/span>/i);
+    
+    let location: string | null = null;
+    if (locMatch) {
+      location = stripHtmlTags(locMatch[1]);
+    } else {
+      // 2. Country/City fields in additionalFields (SAS style)
+      const countryMatch = row.match(/field-label">\s*Country[^<]*<\/span>\s*<\/dt>\s*<dd[^>]*><span[^>]*>\s*([\s\S]*?)<\/span>/i);
+      const cityMatch = row.match(/field-label">\s*City<\/span>\s*<\/dt>\s*<dd[^>]*><span[^>]*>\s*([\s\S]*?)<\/span>/i);
+      const stateMatch = row.match(/field-label">\s*State<\/span>\s*<\/dt>\s*<dd[^>]*><span[^>]*>\s*([\s\S]*?)<\/span>/i);
+      
+      const parts = [];
+      if (cityMatch) parts.push(stripHtmlTags(cityMatch[1]));
+      if (stateMatch) parts.push(stripHtmlTags(stateMatch[1]));
+      if (countryMatch) parts.push(stripHtmlTags(countryMatch[1]));
+      
+      if (parts.length > 0) {
+        location = parts.join(', ');
+      }
+    }
+
+    // Match ID field with any dd/span attributes
+    const idMatch = row.match(
+      /iCIMS_JobHeaderField">(?:ID|Requisition ID)<\/dt>\s*<dd[^>]*><span[^>]*>\s*([\s\S]*?)<\/span>/i
+    );
+    const externalId = idMatch ? stripHtmlTags(idMatch[1]) : null;
+
+    const descMatch = row.match(/<div class="col-xs-12 description">([\s\S]*?)<\/div>/i);
+    const description = descMatch ? stripHtmlTags(descMatch[1]) : null;
+
+    jobs.push({
+      title,
+      jobUrl,
+      location,
+      externalId,
+      description,
+    });
+  }
+
+  return jobs;
+}
+
+async function fetchIcimsJobs(boardUrl: string, debug = false): Promise<IcimsJob[]> {
+  const baseUrl = getIcimsSearchUrl(boardUrl);
+  const jobs: IcimsJob[] = [];
+  let page = 1;
+  const headers = {
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "User-Agent":
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  };
+
+  while (true) {
+    const pageUrl = baseUrl.includes("?")
+      ? `${baseUrl}&pr=${page - 1}`
+      : `${baseUrl}?pr=${page - 1}`;
+
+    const res = await fetch(pageUrl, { headers });
+    if (!res.ok) {
+      if (debug) {
+        console.log(`  [DEBUG] ICIMS fetch failed ${res.status} for ${pageUrl}`);
+      }
+      break;
+    }
+    const html = await res.text();
+    const parsed = parseIcimsJobs(html, baseUrl, debug);
+    if (parsed.length === 0) {
+      if (debug) {
+        console.log(`  [DEBUG] ICIMS page ${page} returned 0 rows. Length=${html.length}.`);
+      }
+      break;
+    }
+    jobs.push(...parsed);
+    if (debug) {
+      console.log(`  [DEBUG] ICIMS page ${page}: ${parsed.length} jobs`);
+    }
+    page += 1;
+    if (page > 50) {
+      // safety stop
+      break;
+    }
+  }
+
+  if (debug) {
+    console.log(`  [DEBUG] ICIMS total jobs: ${jobs.length}`);
+  }
+
+  return jobs;
+}
+
+function normalizeIcimsJob(companyName: string, job: IcimsJob): NormalizedJob | null {
+  const title = job.title.trim();
+  if (!title) return null;
+  
+  // Extract external ID:  
+  // First try the ID field from the row
+  let externalId = job.externalId && job.externalId.trim() ? job.externalId.trim() : null;
+  
+  // If not found, extract from URL: /jobs/6419/title/job -> "6419"
+  if (!externalId) {
+    const urlMatch = job.jobUrl.match(/\/jobs\/(\d+)\//);
+    externalId = urlMatch ? urlMatch[1] : null;
+  }
+  
+  if (!externalId) return null;
+  
+  return {
+    companyName,
+    externalId,
+    title,
+    location: job.location,
+    postedAt: null,
+    jobUrl: job.jobUrl,
+    descriptionText: job.description,
+  };
+}
+
 function getSupportedCompanies(companies: Company[]): Company[] {
   return companies.filter(
     (company) =>
       company.platform === "GREENHOUSE" ||
       company.platform === "LEVER" ||
-      company.platform === "WORKDAY"
+      company.platform === "WORKDAY" ||
+      company.platform === "ICIMS"
   );
 }
 
@@ -753,6 +944,11 @@ async function main() {
         workdayJobs = await fetchWorkdayJobs(company.boardUrl, debugMode);
         normalized = workdayJobs
           .map((job) => normalizeWorkdayJob(company.name, company.boardUrl, job))
+          .filter((job): job is NormalizedJob => Boolean(job && job.jobUrl));
+      } else if (company.platform === "ICIMS") {
+        const jobs = await fetchIcimsJobs(company.boardUrl, debugMode);
+        normalized = jobs
+          .map((job) => normalizeIcimsJob(company.name, job))
           .filter((job): job is NormalizedJob => Boolean(job && job.jobUrl));
       } else {
         console.log(`${company.name}: unsupported ATS (${company.platform})`);

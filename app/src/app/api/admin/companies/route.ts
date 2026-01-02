@@ -309,7 +309,7 @@ export async function POST(request: Request) {
         if (existingByUrl.name !== name) {
           await prisma.company.update({
             where: { id: existingByUrl.id },
-            data: { name, platform: ats },
+            data: { name, platform: ats as any },
           });
         }
         updated += 1;
@@ -328,7 +328,7 @@ export async function POST(request: Request) {
           continue;
         }
         await prisma.company.create({
-          data: { name, boardUrl, platform: ats },
+          data: { name, boardUrl, platform: ats as any },
         });
         added += 1;
         addedUrls.push({ name, url: boardUrl });

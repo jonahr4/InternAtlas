@@ -776,7 +776,9 @@ function getSupportedCompanies(companies: Company[]): Company[] {
       company.platform === "GREENHOUSE" ||
       company.platform === "LEVER" ||
       company.platform === "WORKDAY" ||
-      company.platform === "ICIMS"
+      company.platform === "ICIMS" ||
+      (company.platform === "CUSTOM" &&
+        company.boardUrl.toLowerCase().includes("icims.com"))
   );
 }
 
@@ -932,20 +934,26 @@ async function main() {
 
       let normalized: NormalizedJob[] = [];
       let workdayJobs: WorkdayJob[] | null = null;
-      if (company.platform === "GREENHOUSE") {
+      const effectivePlatform =
+        company.platform === "CUSTOM" &&
+        company.boardUrl.toLowerCase().includes("icims.com")
+          ? "ICIMS"
+          : company.platform;
+
+      if (effectivePlatform === "GREENHOUSE") {
         const jobs = await fetchGreenhouseJobs(company.boardUrl);
         normalized = jobs.map((job) => normalizeGreenhouseJob(company.name, job));
-      } else if (company.platform === "LEVER") {
+      } else if (effectivePlatform === "LEVER") {
         const jobs = await fetchLeverJobs(company.boardUrl);
         normalized = jobs
           .map((job) => normalizeLeverJob(company.name, job))
           .filter((job) => job.jobUrl);
-      } else if (company.platform === "WORKDAY") {
+      } else if (effectivePlatform === "WORKDAY") {
         workdayJobs = await fetchWorkdayJobs(company.boardUrl, debugMode);
         normalized = workdayJobs
           .map((job) => normalizeWorkdayJob(company.name, company.boardUrl, job))
           .filter((job): job is NormalizedJob => Boolean(job && job.jobUrl));
-      } else if (company.platform === "ICIMS") {
+      } else if (effectivePlatform === "ICIMS") {
         const jobs = await fetchIcimsJobs(company.boardUrl, debugMode);
         normalized = jobs
           .map((job) => normalizeIcimsJob(company.name, job))

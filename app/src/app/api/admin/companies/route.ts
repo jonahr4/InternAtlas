@@ -307,10 +307,17 @@ export async function POST(request: Request) {
       if (existingByUrl) {
         // URL exists - only update the name if different, don't change URL
         if (existingByUrl.name !== name) {
-          await prisma.company.update({
-            where: { id: existingByUrl.id },
-            data: { name, platform: ats as any },
-          });
+          try {
+            await prisma.company.update({
+              where: { id: existingByUrl.id },
+              data: { name, platform: ats as any },
+            });
+          } catch {
+            await prisma.company.update({
+              where: { id: existingByUrl.id },
+              data: { name, platform: "CUSTOM" as any },
+            });
+          }
         }
         updated += 1;
         updatedUrls.push({ name, url: boardUrl });
@@ -327,9 +334,15 @@ export async function POST(request: Request) {
           skipped += 1;
           continue;
         }
-        await prisma.company.create({
-          data: { name, boardUrl, platform: ats as any },
-        });
+        try {
+          await prisma.company.create({
+            data: { name, boardUrl, platform: ats as any },
+          });
+        } catch {
+          await prisma.company.create({
+            data: { name, boardUrl, platform: "CUSTOM" as any },
+          });
+        }
         added += 1;
         addedUrls.push({ name, url: boardUrl });
       }

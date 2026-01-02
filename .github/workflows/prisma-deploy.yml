@@ -1,0 +1,45 @@
+name: Deploy Prisma Migrations
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/prisma/schema.prisma'
+      - 'app/prisma/migrations/**'
+
+jobs:
+  deploy-migrations:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'app/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./app
+        run: npm ci
+
+      - name: Apply Prisma migrations
+        working-directory: ./app
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx prisma migrate deploy
+
+      - name: Trigger Vercel redeploy
+        env:
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -n "$VERCEL_DEPLOY_HOOK" ]; then
+            curl -X POST "$VERCEL_DEPLOY_HOOK"
+            echo "✓ Triggered Vercel redeploy"
+          else
+            echo "⚠ VERCEL_DEPLOY_HOOK not set, skipping redeploy trigger"
+          fi

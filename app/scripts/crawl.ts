@@ -1072,7 +1072,7 @@ async function main() {
           if (activeExternalId && existingJob.externalId !== activeExternalId) {
             const conflict = await prisma.job.findFirst({
               where: {
-                sourcePlatform: company.platform,
+                sourcePlatform: company.platform as any,
                 externalId: activeExternalId,
                 id: { not: existingJob.id },
               },
@@ -1103,7 +1103,7 @@ async function main() {
                 jobUrl: job.jobUrl,
                 applyUrl: job.jobUrl,
                 descriptionText: job.descriptionText,
-                sourcePlatform: company.platform,
+                sourcePlatform: company.platform as any,
                 externalId: job.externalId,
                 status: "ACTIVE",
               },
@@ -1213,7 +1213,7 @@ async function main() {
                 jobUrl: job.jobUrl,
                 applyUrl: job.jobUrl,
                 descriptionText: job.descriptionText,
-                sourcePlatform: company.platform,
+                sourcePlatform: company.platform as any,
                 externalId: job.externalId,
                 status: "ACTIVE",
               },
@@ -1286,7 +1286,7 @@ async function main() {
       const totalClosedJobs = await prisma.job.count({
         where: {
           companyId: company.id,
-          sourcePlatform: company.platform,
+          sourcePlatform: company.platform as any,
           status: "CLOSED",
         },
       });

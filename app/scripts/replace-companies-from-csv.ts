@@ -61,7 +61,7 @@ async function replaceCompanies() {
     console.log('💾 Inserting companies to Digital Ocean...');
     const batchSize = 100;
     for (let i = 0; i < companies.length; i += batchSize) {
-      const batch = companies.slice(i, i + batchSize);
+      const batch = companies.slice(i, i + batchSize) as any[];
       await db.company.createMany({
         data: batch,
       });

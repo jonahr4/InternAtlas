@@ -74,7 +74,7 @@ async function replaceJobs() {
     let errorCount = 0;
 
     for (let i = 0; i < jobs.length; i += batchSize) {
-      const batch = jobs.slice(i, i + batchSize);
+      const batch = jobs.slice(i, i + batchSize) as any[];
       let retries = 3;
       let success = false;
 

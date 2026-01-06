@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 // Source: Local DB
 const sourceDB = new PrismaClient({
@@ -55,7 +55,10 @@ async function migrate() {
     console.log('💾 Inserting jobs to Digital Ocean...');
     const jobBatchSize = 500;
     for (let i = 0; i < jobs.length; i += jobBatchSize) {
-      const batch = jobs.slice(i, i + jobBatchSize);
+      const batch = jobs.slice(i, i + jobBatchSize).map(job => ({
+        ...job,
+        rawPayload: job.rawPayload === null ? Prisma.JsonNull : job.rawPayload,
+      }));
       try {
         await targetDB.job.createMany({
           data: batch,

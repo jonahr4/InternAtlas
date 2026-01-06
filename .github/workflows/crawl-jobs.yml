@@ -9,7 +9,7 @@ on:
 jobs:
   crawl:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 720
     
     steps:
       - name: Checkout code

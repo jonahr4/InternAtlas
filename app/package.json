@@ -16,7 +16,10 @@
     "crawl:workday:new": "tsx scripts/crawl.ts --ats=WORKDAY --new-only",
     "crawl:workday:repair": "tsx scripts/crawl.ts --repair-workday",
     "jobs:clear": "tsx scripts/clear-jobs.ts",
-    "companies:export": "tsx scripts/export-companies.ts"
+    "companies:export": "tsx scripts/export-companies.ts",
+    "migrate:to-do": "tsx scripts/migrate-to-do.ts",
+    "companies:replace-from-csv": "tsx scripts/replace-companies-from-csv.ts",
+    "jobs:replace-from-csv": "tsx scripts/replace-jobs-from-csv.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.17.1",
@@ -27,10 +30,12 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
+    "papaparse": "^5.5.3",
     "prisma": "^6.17.1",
     "tailwindcss": "^4",
     "tsx": "^4.19.2",

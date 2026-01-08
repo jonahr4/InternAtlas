@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100">
+  <defs>
+    <style>
+      .globe { fill: none; stroke: #1e3a5f; stroke-width: 2; }
+      .pin { fill: #1e3a5f; }
+      .arrow { fill: none; stroke: #1e3a5f; stroke-width: 2.5; stroke-linecap: round; }
+      .text-intern { fill: #0ea5e9; font-family: system-ui, -apple-system, sans-serif; font-weight: 600; font-size: 36px; }
+      .text-atlas { fill: #1e3a5f; font-family: system-ui, -apple-system, sans-serif; font-weight: 700; font-size: 36px; }
+    </style>
+  </defs>
+  
+  <!-- Globe -->
+  <g transform="translate(50, 50)">
+    <!-- Outer circle -->
+    <circle class="globe" cx="0" cy="0" r="28"/>
+    <!-- Horizontal lines -->
+    <ellipse class="globe" cx="0" cy="0" rx="28" ry="10"/>
+    <line class="globe" x1="-28" y1="0" x2="28" y2="0"/>
+    <!-- Vertical curve -->
+    <ellipse class="globe" cx="0" cy="0" rx="12" ry="28"/>
+    
+    <!-- Location Pin -->
+    <path class="pin" d="M0,-42 C-6,-42 -10,-38 -10,-32 C-10,-26 0,-18 0,-18 C0,-18 10,-26 10,-32 C10,-38 6,-42 0,-42 Z" />
+    <circle fill="white" cx="0" cy="-33" r="3"/>
+    
+    <!-- Arrow circling globe -->
+    <path class="arrow" d="M 35,-5 Q 42,15 30,28 Q 15,38 -5,35" />
+    <polygon class="pin" points="-5,30 -5,40 5,35" />
+  </g>
+  
+  <!-- Text -->
+  <text x="100" y="62" class="text-intern">Intern</text>
+  <text x="195" y="62" class="text-atlas">Atlas</text>
+</svg>
+

@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 
-import { JobCard } from "./JobCard";
-import { JobDetailPanel } from "./JobDetailPanel";
+import { JobCard, JobCardSkeleton } from "./JobCard";
+import { JobDetailPanel, JobDetailSkeleton } from "./JobDetailPanel";
 import { TagInput } from "./TagInput";
 
 type Job = {
@@ -71,7 +71,6 @@ const DEFAULT_STATE: QueryState = {
 function buildSearchParams(state: QueryState, titleTag?: string, locationTag?: string) {
   const params = new URLSearchParams();
   
-  // For URL display, join all tags
   if (state.titleTags.length > 0 && !titleTag) {
     params.set("title", state.titleTags.join(","));
   } else if (titleTag) {
@@ -144,6 +143,7 @@ export default function JobSearch() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialized = useRef(false);
+  const jobListRef = useRef<HTMLDivElement>(null);
 
   const [titleTags, setTitleTags] = useState<string[]>(DEFAULT_STATE.titleTags);
   const [companyFilter, setCompanyFilter] = useState(DEFAULT_STATE.companyFilter);
@@ -158,10 +158,36 @@ export default function JobSearch() {
     page: 1,
     pageSize: PAGE_SIZE,
   });
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+
+  // UI State
+  const [darkMode, setDarkMode] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+
+  // Initialize dark mode from system preference
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const savedMode = localStorage.getItem("darkMode");
+      const isDark = savedMode ? savedMode === "true" : prefersDark;
+      setDarkMode(isDark);
+      document.documentElement.classList.toggle("dark", isDark);
+    }
+  }, []);
+
+  // Toggle dark mode
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode);
+    document.documentElement.classList.toggle("dark", !darkMode);
+    localStorage.setItem("darkMode", String(!darkMode));
+  };
 
   useEffect(() => {
     if (initialized.current) return;
@@ -181,6 +207,57 @@ export default function JobSearch() {
     fetchLatestUpdatedAt();
   }, []);
 
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (menuOpen || mobileDetailOpen) return;
+      
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+
+      if (e.key === "ArrowDown" || e.key === "j") {
+        e.preventDefault();
+        const nextIndex = Math.min(selectedIndex + 1, data.items.length - 1);
+        setSelectedIndex(nextIndex);
+        if (data.items[nextIndex]) {
+          setSelectedJob(data.items[nextIndex]);
+        }
+      } else if (e.key === "ArrowUp" || e.key === "k") {
+        e.preventDefault();
+        const nextIndex = Math.max(selectedIndex - 1, 0);
+        setSelectedIndex(nextIndex);
+        if (data.items[nextIndex]) {
+          setSelectedJob(data.items[nextIndex]);
+        }
+      } else if (e.key === "Enter" && selectedJob) {
+        e.preventDefault();
+        window.open(selectedJob.jobUrl, "_blank");
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setSelectedJob(null);
+        setSelectedIndex(-1);
+        setMobileDetailOpen(false);
+      } else if (e.key === "b" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setBulkMode(!bulkMode);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedIndex, data.items, selectedJob, menuOpen, mobileDetailOpen, bulkMode]);
+
+  // Scroll selected job into view
+  useEffect(() => {
+    if (selectedIndex >= 0 && jobListRef.current) {
+      const jobButtons = jobListRef.current.querySelectorAll("button");
+      const selectedButton = jobButtons[selectedIndex];
+      if (selectedButton) {
+        selectedButton.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    }
+  }, [selectedIndex]);
+
   type FetchOptions = {
     overrideState?: Partial<QueryState>;
     skipUrlUpdate?: boolean;
@@ -199,7 +276,6 @@ export default function JobSearch() {
     return `${days}d ago`;
   }
 
-  // Fetch jobs with OR logic - make separate requests for each tag and merge
   async function fetchJobs(
     nextPage = 1,
     options: FetchOptions = { overrideState: {}, skipUrlUpdate: false }
@@ -218,7 +294,6 @@ export default function JobSearch() {
     };
 
     try {
-      // Update URL with all tags for sharing
       if (!options.skipUrlUpdate) {
         const urlParams = buildSearchParams(nextState);
         router.replace(`?${urlParams.toString()}`, { scroll: false });
@@ -227,11 +302,9 @@ export default function JobSearch() {
       let allJobs: Job[] = [];
       let estimatedTotal = 0;
 
-      // If we have multiple title tags OR multiple location tags, make separate requests
       const titleSearches = nextState.titleTags.length > 0 ? nextState.titleTags : [""];
       const locationSearches = nextState.locationTags.length > 0 ? nextState.locationTags : [""];
 
-      // Build all combinations and fetch in parallel
       const fetchPromises: Promise<ApiResponse>[] = [];
       
       for (const title of titleSearches) {
@@ -258,7 +331,6 @@ export default function JobSearch() {
 
       const results = await Promise.all(fetchPromises);
 
-      // Merge results and deduplicate by job ID
       const seenIds = new Set<string>();
       for (const result of results) {
         for (const job of result.items) {
@@ -267,11 +339,9 @@ export default function JobSearch() {
             allJobs.push(job);
           }
         }
-        // Take max of all totals as estimate
         estimatedTotal = Math.max(estimatedTotal, result.total);
       }
 
-      // Sort combined results
       allJobs.sort((a, b) => {
         const dir = nextState.sortOption.sortDir === "asc" ? 1 : -1;
         if (nextState.sortOption.sort === "company") {
@@ -283,7 +353,6 @@ export default function JobSearch() {
         }
       });
 
-      // Limit to page size
       const paginatedJobs = allJobs.slice(0, PAGE_SIZE);
 
       setData({
@@ -299,9 +368,9 @@ export default function JobSearch() {
       setStatusFilter(nextState.statusFilter);
       setSortOption(nextState.sortOption);
       
-      // Auto-select first job if none selected
       if (paginatedJobs.length > 0 && !selectedJob) {
         setSelectedJob(paginatedJobs[0]);
+        setSelectedIndex(0);
       }
       
       const latestFromPage = paginatedJobs.reduce<Date | null>(
@@ -360,25 +429,60 @@ export default function JobSearch() {
     setSortOption(DEFAULT_STATE.sortOption);
     setPage(DEFAULT_STATE.page);
     setSelectedJob(null);
+    setSelectedIndex(-1);
     fetchJobs(1, { overrideState: DEFAULT_STATE });
   }
 
-  // Future: callbacks for board actions
+  // Bulk mode handlers
+  const handleJobCheck = (jobId: string, checked: boolean) => {
+    const newSet = new Set(selectedJobs);
+    if (checked) {
+      newSet.add(jobId);
+    } else {
+      newSet.delete(jobId);
+    }
+    setSelectedJobs(newSet);
+  };
+
+  const selectAllJobs = () => {
+    setSelectedJobs(new Set(data.items.map(j => j.id)));
+  };
+
+  const deselectAllJobs = () => {
+    setSelectedJobs(new Set());
+  };
+
+  const handleBulkAddToApply = () => {
+    console.log("Bulk add to 'To Apply':", Array.from(selectedJobs));
+    // TODO: Implement backend integration
+  };
+
+  const handleBulkAddToApplied = () => {
+    console.log("Bulk add to 'Applied':", Array.from(selectedJobs));
+    // TODO: Implement backend integration
+  };
+
   const handleAddToApply = (jobId: string) => {
     console.log("Add to 'To Apply' board:", jobId);
-    // TODO: Implement backend integration
   };
 
   const handleAddToApplied = (jobId: string) => {
     console.log("Add to 'Applied' board:", jobId);
-    // TODO: Implement backend integration
+  };
+
+  const handleJobClick = (job: Job, index: number) => {
+    setSelectedJob(job);
+    setSelectedIndex(index);
+    // On mobile, open the detail sheet
+    if (window.innerWidth < 768) {
+      setMobileDetailOpen(true);
+    }
   };
 
   const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
   const start = data.total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const end = Math.min(data.total, start + data.items.length - 1);
 
-  // Build search summary text
   const searchSummary = useMemo(() => {
     const parts: string[] = [];
     if (titleTags.length > 0) {
@@ -391,63 +495,83 @@ export default function JobSearch() {
   }, [titleTags, locationTags]);
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50">
+    <div className="flex h-screen flex-col bg-slate-50 dark:bg-slate-900">
       {/* Header */}
-      <header className="flex-none border-b border-slate-200 bg-white">
-        <div className="flex h-16 items-center justify-between px-4 lg:px-6">
+      <header className="flex-none border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <div className="flex h-14 md:h-16 items-center justify-between px-4 lg:px-6">
           {/* Logo */}
           <div className="flex items-center gap-2">
             <Image
               src="/logo.svg"
               alt="InternAtlas"
-              width={180}
-              height={45}
+              width={160}
+              height={40}
               priority
-              className="h-10 w-auto"
+              className="h-8 md:h-10 w-auto"
             />
           </div>
 
           {/* Right Side Actions */}
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-slate-500">
+          <div className="flex items-center gap-2 md:gap-3">
+            <span className="hidden sm:inline text-xs md:text-sm text-slate-500 dark:text-slate-400">
               Updated {formatRelativeTime(lastUpdatedAt)}
             </span>
+            
+            {/* Dark Mode Toggle */}
             <button
               type="button"
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+              onClick={toggleDarkMode}
+              className="hidden md:flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 transition hover:bg-slate-100 dark:hover:bg-slate-700"
+              title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {darkMode ? (
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              ) : (
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                </svg>
+              )}
+            </button>
+
+            <button
+              type="button"
+              className="hidden md:inline-flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-600"
             >
               Sign in for more features
             </button>
-            <a
-              href="/admin"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100"
+            
+            {/* Menu Button */}
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 transition hover:bg-slate-100 dark:hover:bg-slate-700"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
-            </a>
+            </button>
           </div>
         </div>
 
         {/* Search Bar */}
-        <div className="border-t border-slate-100 px-4 py-3 lg:px-6">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex flex-1 items-center gap-2 min-w-[200px]">
-              {/* Multi-tag keyword search */}
+        <div className="border-t border-slate-100 dark:border-slate-700 px-4 py-3 lg:px-6">
+          <div className="flex flex-wrap items-center gap-2 md:gap-3">
+            <div className="flex flex-1 flex-wrap md:flex-nowrap items-center gap-2 min-w-0">
               <TagInput
                 tags={titleTags}
                 onTagsChange={(newTags) => setTitleTags(newTags)}
                 placeholder="Job titles (Enter to add)"
-                className="h-10 flex-[2] min-w-[200px]"
+                className="h-10 flex-1 md:flex-[2] min-w-[180px]"
               />
               <input
-                className="h-10 w-32 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm outline-none transition focus:border-teal-300 focus:bg-white focus:ring-2 focus:ring-teal-100"
+                className="h-10 w-full md:w-32 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 px-3 text-sm text-slate-900 dark:text-slate-100 outline-none transition focus:border-teal-300 focus:bg-white dark:focus:bg-slate-600 focus:ring-2 focus:ring-teal-100 dark:focus:ring-teal-900"
                 placeholder="Company"
                 value={companyFilter}
                 onChange={(e) => setCompanyFilter(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && fetchJobs(1)}
               />
-              {/* Multi-tag location search */}
               <TagInput
                 tags={locationTags}
                 onTagsChange={(newTags) => setLocationTags(newTags)}
@@ -458,7 +582,7 @@ export default function JobSearch() {
             </div>
             <button
               type="button"
-              className="h-10 rounded-lg bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:opacity-50"
+              className="h-10 w-full md:w-auto rounded-lg bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:opacity-50"
               onClick={() => fetchJobs(1)}
               disabled={isLoading}
             >
@@ -471,12 +595,12 @@ export default function JobSearch() {
             {/* Status Filter Dropdown */}
             <div className="relative">
               <select
-                className={`h-8 appearance-none rounded-full pl-3 pr-8 text-sm font-medium transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-100 ${
+                className={`h-8 appearance-none rounded-full pl-3 pr-8 text-sm font-medium transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-100 dark:focus:ring-teal-900 ${
                   statusFilter === "open"
-                    ? "bg-emerald-100 text-emerald-700"
+                    ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400"
                     : statusFilter === "closed"
-                    ? "bg-amber-100 text-amber-700"
-                    : "bg-slate-100 text-slate-700"
+                    ? "bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400"
+                    : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
                 }`}
                 value={statusFilter}
                 onChange={(e) => {
@@ -494,10 +618,10 @@ export default function JobSearch() {
               </svg>
             </div>
             
-            <div className="h-5 w-px bg-slate-200" />
+            <div className="h-5 w-px bg-slate-200 dark:bg-slate-600" />
             
             <select
-              className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-600 outline-none transition focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
+              className="h-8 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-2 text-sm text-slate-600 dark:text-slate-300 outline-none transition focus:border-teal-300 focus:ring-2 focus:ring-teal-100 dark:focus:ring-teal-900"
               value={sortOption.label}
               onChange={(e) => {
                 const next = SORT_OPTIONS.find((opt) => opt.label === e.target.value) ?? SORT_OPTIONS[0];
@@ -512,29 +636,90 @@ export default function JobSearch() {
               ))}
             </select>
 
+            {/* Bulk Mode Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                setBulkMode(!bulkMode);
+                if (bulkMode) setSelectedJobs(new Set());
+              }}
+              className={`hidden md:inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition ${
+                bulkMode
+                  ? "bg-teal-100 dark:bg-teal-900/50 text-teal-700 dark:text-teal-400"
+                  : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
+              }`}
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              Bulk
+            </button>
+
             {activeFiltersCount > 0 && (
               <button
                 type="button"
                 onClick={resetFilters}
-                className="text-sm font-medium text-slate-500 hover:text-slate-700"
+                className="text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
               >
                 Clear filters
               </button>
             )}
             
-            {/* Show active search summary */}
             {searchSummary && (
-              <span className="text-sm text-slate-500">
+              <span className="hidden md:inline text-sm text-slate-500 dark:text-slate-400">
                 {searchSummary}
               </span>
             )}
           </div>
         </div>
+
+        {/* Bulk Mode Actions Bar */}
+        {bulkMode && selectedJobs.size > 0 && (
+          <div className="border-t border-slate-100 dark:border-slate-700 bg-teal-50 dark:bg-teal-900/30 px-4 py-2 lg:px-6">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-teal-700 dark:text-teal-400">
+                {selectedJobs.size} job{selectedJobs.size !== 1 ? "s" : ""} selected
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleBulkAddToApply}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-teal-700"
+                >
+                  Add to "To Apply"
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkAddToApplied}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-600"
+                >
+                  Mark as Applied
+                </button>
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={selectAllJobs}
+                  className="text-sm text-teal-600 dark:text-teal-400 hover:underline"
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  onClick={deselectAllJobs}
+                  className="text-sm text-slate-500 dark:text-slate-400 hover:underline"
+                >
+                  Deselect all
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Error Banner */}
       {error && (
-        <div className="flex-none bg-red-50 border-b border-red-100 px-4 py-2 text-sm text-red-700">
+        <div className="flex-none bg-red-50 dark:bg-red-900/30 border-b border-red-100 dark:border-red-900 px-4 py-2 text-sm text-red-700 dark:text-red-400">
           {error}
         </div>
       )}
@@ -542,63 +727,109 @@ export default function JobSearch() {
       {/* Main Content */}
       <main className="flex flex-1 overflow-hidden">
         {/* Left Pane - Job List */}
-        <div className="flex w-[400px] flex-col border-r border-slate-200 bg-white lg:w-[440px]">
+        <div className="flex w-full md:w-[400px] lg:w-[440px] flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
           {/* Results Header */}
-          <div className="flex-none border-b border-slate-100 px-4 py-3">
+          <div className="flex-none border-b border-slate-100 dark:border-slate-700 px-4 py-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-900">
+              <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
                 {data.total.toLocaleString()} jobs
               </span>
-              <span className="text-sm text-slate-500">
+              <span className="text-sm text-slate-500 dark:text-slate-400">
                 {start}–{end}
               </span>
             </div>
           </div>
 
           {/* Job List */}
-          <div className="flex-1 overflow-y-auto">
+          <div ref={jobListRef} className="flex-1 overflow-y-auto">
             {isLoading && data.items.length === 0 ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-500 border-t-transparent" />
+              // Skeleton loading state
+              <div>
+                {[...Array(8)].map((_, i) => (
+                  <JobCardSkeleton key={i} index={i} />
+                ))}
               </div>
             ) : data.items.length === 0 ? (
-              <div className="px-4 py-12 text-center text-sm text-slate-500">
-                No jobs found matching your criteria.
+              // Empty state
+              <div className="flex flex-col items-center justify-center py-16 px-4 text-center animate-fade-in">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-700">
+                  <svg className="h-8 w-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-lg font-medium text-slate-600 dark:text-slate-400">No jobs found</p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-500">Try adjusting your search filters</p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTitleTags(["Software Engineer"]);
+                      fetchJobs(1, { overrideState: { titleTags: ["Software Engineer"] } });
+                    }}
+                    className="rounded-full bg-slate-100 dark:bg-slate-700 px-3 py-1 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
+                  >
+                    Software Engineer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTitleTags(["Intern"]);
+                      fetchJobs(1, { overrideState: { titleTags: ["Intern"] } });
+                    }}
+                    className="rounded-full bg-slate-100 dark:bg-slate-700 px-3 py-1 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
+                  >
+                    Intern
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTitleTags(["Data Science"]);
+                      fetchJobs(1, { overrideState: { titleTags: ["Data Science"] } });
+                    }}
+                    className="rounded-full bg-slate-100 dark:bg-slate-700 px-3 py-1 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
+                  >
+                    Data Science
+                  </button>
+                </div>
               </div>
             ) : (
-              data.items.map((job) => (
+              data.items.map((job, index) => (
                 <JobCard
                   key={job.id}
                   job={job}
                   isSelected={selectedJob?.id === job.id}
-                  onClick={() => setSelectedJob(job)}
+                  onClick={() => handleJobClick(job, index)}
+                  bulkMode={bulkMode}
+                  isChecked={selectedJobs.has(job.id)}
+                  onCheck={(checked) => handleJobCheck(job.id, checked)}
+                  index={index}
                 />
               ))
             )}
           </div>
 
           {/* Pagination */}
-          <div className="flex-none border-t border-slate-100 px-4 py-3">
+          <div className="flex-none border-t border-slate-100 dark:border-slate-700 px-4 py-3">
             <div className="flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => fetchJobs(page - 1)}
                 disabled={page <= 1 || isLoading}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 transition hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
                 Prev
               </button>
-              <span className="text-sm text-slate-500">
+              <span className="text-sm text-slate-500 dark:text-slate-400">
                 Page {page} of {totalPages}
               </span>
               <button
                 type="button"
                 onClick={() => fetchJobs(page + 1)}
                 disabled={page >= totalPages || isLoading}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 transition hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
               >
                 Next
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -609,15 +840,146 @@ export default function JobSearch() {
           </div>
         </div>
 
-        {/* Right Pane - Job Details */}
-        <div className="flex-1 overflow-auto">
-          <JobDetailPanel 
-            job={selectedJob}
-            onAddToApply={handleAddToApply}
-            onAddToApplied={handleAddToApplied}
-          />
+        {/* Right Pane - Job Details (hidden on mobile) */}
+        <div className="hidden md:flex flex-1 overflow-hidden">
+          {isLoading && !selectedJob ? (
+            <JobDetailSkeleton />
+          ) : (
+            <JobDetailPanel 
+              job={selectedJob}
+              onAddToApply={handleAddToApply}
+              onAddToApplied={handleAddToApplied}
+            />
+          )}
         </div>
       </main>
+
+      {/* Mobile Detail Sheet */}
+      {mobileDetailOpen && (
+        <>
+          <div 
+            className="fixed inset-0 z-40 bg-black/50 menu-backdrop md:hidden"
+            onClick={() => setMobileDetailOpen(false)}
+          />
+          <div className="fixed inset-x-0 bottom-0 z-50 md:hidden">
+            <JobDetailPanel 
+              job={selectedJob}
+              onAddToApply={handleAddToApply}
+              onAddToApplied={handleAddToApplied}
+              onClose={() => setMobileDetailOpen(false)}
+              isMobile
+            />
+          </div>
+        </>
+      )}
+
+      {/* Slide-in Menu */}
+      {menuOpen && (
+        <>
+          <div 
+            className="fixed inset-0 z-40 bg-black/50 menu-backdrop"
+            onClick={() => setMenuOpen(false)}
+          />
+          <div className="fixed right-0 top-0 bottom-0 z-50 w-80 bg-white dark:bg-slate-800 shadow-2xl animate-slide-in-right">
+            <div className="flex h-full flex-col">
+              {/* Menu Header */}
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-4 py-4">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Menu</h2>
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen(false)}
+                  className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Menu Items */}
+              <div className="flex-1 overflow-y-auto py-4">
+                {/* Theme Toggle */}
+                <div className="px-4 mb-4">
+                  <button
+                    type="button"
+                    onClick={toggleDarkMode}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-slate-100 dark:hover:bg-slate-700"
+                  >
+                    {darkMode ? (
+                      <svg className="h-5 w-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                    ) : (
+                      <svg className="h-5 w-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                      </svg>
+                    )}
+                    <span className="font-medium text-slate-700 dark:text-slate-200">
+                      {darkMode ? "Light Mode" : "Dark Mode"}
+                    </span>
+                  </button>
+                </div>
+
+                <div className="h-px bg-slate-200 dark:bg-slate-700 mx-4 mb-4" />
+
+                {/* Navigation Links */}
+                <nav className="px-4 space-y-1">
+                  <a
+                    href="/admin"
+                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 dark:hover:bg-slate-700"
+                  >
+                    <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span className="font-medium">Admin</span>
+                  </a>
+                </nav>
+
+                <div className="h-px bg-slate-200 dark:bg-slate-700 mx-4 my-4" />
+
+                {/* Keyboard Shortcuts */}
+                <div className="px-4">
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Keyboard Shortcuts
+                  </h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                      <span>Navigate jobs</span>
+                      <div className="flex gap-1">
+                        <kbd className="rounded bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 font-mono text-xs">↑</kbd>
+                        <kbd className="rounded bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 font-mono text-xs">↓</kbd>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                      <span>Open job</span>
+                      <kbd className="rounded bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 font-mono text-xs">Enter</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                      <span>Close panel</span>
+                      <kbd className="rounded bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 font-mono text-xs">Esc</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                      <span>Bulk mode</span>
+                      <kbd className="rounded bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 font-mono text-xs">B</kbd>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Menu Footer */}
+              <div className="border-t border-slate-200 dark:border-slate-700 px-4 py-4">
+                <button
+                  type="button"
+                  className="w-full rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
+                >
+                  Sign in for more features
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

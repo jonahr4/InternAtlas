@@ -48,7 +48,8 @@ const SORT_OPTIONS: SortOption[] = [
   { label: "Oldest First", sort: "created_at", sortDir: "asc" },
 ];
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
+const DEFAULT_PAGE_SIZE = 25;
 
 type QueryState = {
   titleTags: string[];
@@ -57,6 +58,7 @@ type QueryState = {
   statusFilter: StatusFilter;
   sortOption: SortOption;
   page: number;
+  pageSize: number;
 };
 
 const DEFAULT_STATE: QueryState = {
@@ -66,6 +68,7 @@ const DEFAULT_STATE: QueryState = {
   statusFilter: "open",
   sortOption: SORT_OPTIONS[0],
   page: 1,
+  pageSize: DEFAULT_PAGE_SIZE,
 };
 
 function buildSearchParams(state: QueryState, titleTag?: string, locationTag?: string) {
@@ -93,7 +96,7 @@ function buildSearchParams(state: QueryState, titleTag?: string, locationTag?: s
   }
 
   params.set("page", String(state.page));
-  params.set("pageSize", String(PAGE_SIZE));
+  params.set("pageSize", String(state.pageSize));
   params.set("sort", state.sortOption.sort);
   params.set("sortDir", state.sortOption.sortDir);
 
@@ -114,6 +117,10 @@ function parseSearchParams(searchParams: URLSearchParams): QueryState {
     1,
     Number.parseInt(searchParams.get("page") ?? "1", 10)
   );
+  const pageSizeParam = Number.parseInt(searchParams.get("pageSize") ?? String(DEFAULT_PAGE_SIZE), 10);
+  const pageSize = (pageSizeParam === 10 || pageSizeParam === 25 || pageSizeParam === 50) 
+    ? pageSizeParam 
+    : DEFAULT_PAGE_SIZE;
 
   const sortOption =
     SORT_OPTIONS.find(
@@ -136,6 +143,7 @@ function parseSearchParams(searchParams: URLSearchParams): QueryState {
     statusFilter,
     sortOption,
     page,
+    pageSize,
   };
 }
 
@@ -151,12 +159,13 @@ export default function JobSearch() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(DEFAULT_STATE.statusFilter);
   const [sortOption, setSortOption] = useState(DEFAULT_STATE.sortOption);
   const [page, setPage] = useState(DEFAULT_STATE.page);
+  const [pageSize, setPageSize] = useState(DEFAULT_STATE.pageSize);
 
   const [data, setData] = useState<ApiResponse>({
     items: [],
     total: 0,
     page: 1,
-    pageSize: PAGE_SIZE,
+    pageSize: DEFAULT_PAGE_SIZE,
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -199,6 +208,7 @@ export default function JobSearch() {
     setStatusFilter(parsed.statusFilter);
     setSortOption(parsed.sortOption);
     setPage(parsed.page);
+    setPageSize(parsed.pageSize);
     fetchJobs(parsed.page, { overrideState: parsed, skipUrlUpdate: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -289,6 +299,7 @@ export default function JobSearch() {
       locationTags,
       statusFilter,
       sortOption,
+      pageSize,
       ...(options.overrideState ?? {}),
       page: nextPage,
     };
@@ -316,7 +327,7 @@ export default function JobSearch() {
           if (nextState.statusFilter === "open") params.set("status", "ACTIVE");
           else if (nextState.statusFilter === "closed") params.set("status", "CLOSED");
           params.set("page", String(nextPage));
-          params.set("pageSize", String(PAGE_SIZE));
+          params.set("pageSize", String(nextState.pageSize));
           params.set("sort", nextState.sortOption.sort);
           params.set("sortDir", nextState.sortOption.sortDir);
 
@@ -353,15 +364,16 @@ export default function JobSearch() {
         }
       });
 
-      const paginatedJobs = allJobs.slice(0, PAGE_SIZE);
+      const paginatedJobs = allJobs.slice(0, nextState.pageSize);
 
       setData({
         items: paginatedJobs,
         total: allJobs.length > 0 ? Math.max(estimatedTotal, allJobs.length) : 0,
         page: nextPage,
-        pageSize: PAGE_SIZE,
+        pageSize: nextState.pageSize,
       });
       setPage(nextState.page);
+      setPageSize(nextState.pageSize);
       setTitleTags(nextState.titleTags);
       setCompanyFilter(nextState.companyFilter);
       setLocationTags(nextState.locationTags);
@@ -428,6 +440,7 @@ export default function JobSearch() {
     setStatusFilter(DEFAULT_STATE.statusFilter);
     setSortOption(DEFAULT_STATE.sortOption);
     setPage(DEFAULT_STATE.page);
+    setPageSize(DEFAULT_STATE.pageSize);
     setSelectedJob(null);
     setSelectedIndex(-1);
     fetchJobs(1, { overrideState: DEFAULT_STATE });
@@ -479,8 +492,8 @@ export default function JobSearch() {
     }
   };
 
-  const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
-  const start = data.total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const totalPages = Math.max(1, Math.ceil(data.total / pageSize));
+  const start = data.total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(data.total, start + data.items.length - 1);
 
   const searchSummary = useMemo(() => {
@@ -564,11 +577,11 @@ export default function JobSearch() {
                 onTagsChange={(newTags) => setTitleTags(newTags)}
                 placeholder="Job titles (Enter to add)"
                 className="h-10 flex-1 md:flex-[2] min-w-[180px]"
-              />
-              <input
+            />
+            <input
                 className="h-10 w-full md:w-32 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 px-3 text-sm text-slate-900 dark:text-slate-100 outline-none transition focus:border-teal-300 focus:bg-white dark:focus:bg-slate-600 focus:ring-2 focus:ring-teal-100 dark:focus:ring-teal-900"
                 placeholder="Company"
-                value={companyFilter}
+              value={companyFilter}
                 onChange={(e) => setCompanyFilter(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && fetchJobs(1)}
               />
@@ -636,6 +649,23 @@ export default function JobSearch() {
               ))}
             </select>
 
+            {/* Page Size Dropdown */}
+            <select
+              className="h-8 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-2 text-sm text-slate-600 dark:text-slate-300 outline-none transition focus:border-teal-300 focus:ring-2 focus:ring-teal-100 dark:focus:ring-teal-900"
+              value={pageSize}
+              onChange={(e) => {
+                const newSize = Number(e.target.value);
+                setPageSize(newSize);
+                fetchJobs(1, { overrideState: { pageSize: newSize } });
+              }}
+            >
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>
+                  {size} per page
+                </option>
+              ))}
+            </select>
+
             {/* Bulk Mode Toggle */}
             <button
               type="button"
@@ -656,13 +686,13 @@ export default function JobSearch() {
             </button>
 
             {activeFiltersCount > 0 && (
-              <button
-                type="button"
-                onClick={resetFilters}
+            <button
+              type="button"
+              onClick={resetFilters}
                 className="text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-              >
+            >
                 Clear filters
-              </button>
+            </button>
             )}
             
             {searchSummary && (
@@ -695,7 +725,7 @@ export default function JobSearch() {
                 >
                   Mark as Applied
                 </button>
-              </div>
+          </div>
               <div className="ml-auto flex items-center gap-2">
                 <button
                   type="button"
@@ -704,17 +734,17 @@ export default function JobSearch() {
                 >
                   Select all
                 </button>
-                <button
-                  type="button"
+              <button
+                type="button"
                   onClick={deselectAllJobs}
                   className="text-sm text-slate-500 dark:text-slate-400 hover:underline"
-                >
+              >
                   Deselect all
-                </button>
-              </div>
+              </button>
             </div>
-          </div>
-        )}
+            </div>
+            </div>
+          )}
       </header>
 
       {/* Error Banner */}
@@ -770,8 +800,8 @@ export default function JobSearch() {
                   >
                     Software Engineer
                   </button>
-                  <button
-                    type="button"
+              <button
+                type="button"
                     onClick={() => {
                       setTitleTags(["Intern"]);
                       fetchJobs(1, { overrideState: { titleTags: ["Intern"] } });
@@ -779,9 +809,9 @@ export default function JobSearch() {
                     className="rounded-full bg-slate-100 dark:bg-slate-700 px-3 py-1 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
                   >
                     Intern
-                  </button>
-                  <button
-                    type="button"
+              </button>
+              <button
+                type="button"
                     onClick={() => {
                       setTitleTags(["Data Science"]);
                       fetchJobs(1, { overrideState: { titleTags: ["Data Science"] } });
@@ -789,9 +819,9 @@ export default function JobSearch() {
                     className="rounded-full bg-slate-100 dark:bg-slate-700 px-3 py-1 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
                   >
                     Data Science
-                  </button>
-                </div>
-              </div>
+              </button>
+            </div>
+          </div>
             ) : (
               data.items.map((job, index) => (
                 <JobCard
@@ -980,6 +1010,6 @@ export default function JobSearch() {
           </div>
         </>
       )}
-    </div>
+      </div>
   );
 }

@@ -32,7 +32,10 @@ jobs:
         working-directory: ./app
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: npx prisma migrate deploy
+        run: |
+          # Reduce connection pool to avoid exhausting database connections
+          export DATABASE_URL="${DATABASE_URL}?connection_limit=1"
+          npx prisma migrate deploy
 
       - name: Trigger Vercel redeploy
         env:

@@ -181,22 +181,36 @@ export default function JobSearch() {
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [showLimitWarning, setShowLimitWarning] = useState<{show: boolean, type: 'title' | 'location' | null}>({show: false, type: null});
 
-  // Initialize dark mode from system preference
+  // Initialize dark mode and listen for system preference changes
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      const savedMode = localStorage.getItem("darkMode");
-      const isDark = savedMode ? savedMode === "true" : prefersDark;
-      setDarkMode(isDark);
-      document.documentElement.classList.toggle("dark", isDark);
-    }
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const savedMode = localStorage.getItem("darkMode");
+    
+    // If user has manually set a preference, use that; otherwise follow system
+    const isDark = savedMode !== null ? savedMode === "true" : mediaQuery.matches;
+    setDarkMode(isDark);
+    document.documentElement.classList.toggle("dark", isDark);
+
+    // Only listen to system changes if user hasn't set a manual preference
+    const handleChange = (e: MediaQueryListEvent) => {
+      if (localStorage.getItem("darkMode") === null) {
+        setDarkMode(e.matches);
+        document.documentElement.classList.toggle("dark", e.matches);
+      }
+    };
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
 
-  // Toggle dark mode
+  // Toggle dark mode manually
   const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
-    document.documentElement.classList.toggle("dark", !darkMode);
-    localStorage.setItem("darkMode", String(!darkMode));
+    const newMode = !darkMode;
+    setDarkMode(newMode);
+    document.documentElement.classList.toggle("dark", newMode);
+    localStorage.setItem("darkMode", String(newMode));
   };
 
   useEffect(() => {

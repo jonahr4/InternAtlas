@@ -152,6 +152,14 @@ export default function JobSearch() {
   const searchParams = useSearchParams();
   const initialized = useRef(false);
   const jobListRef = useRef<HTMLDivElement>(null);
+  
+  // Simple in-memory cache for pagination
+  const cacheRef = useRef<Map<string, ApiResponse>>(new Map());
+  
+  // Queue system for prefetching pages
+  type QueueItem = { cacheKey: string; pageNum: number; state: QueryState };
+  const fetchQueueRef = useRef<QueueItem[]>([]);
+  const isProcessingRef = useRef(false);
 
   const [titleTags, setTitleTags] = useState<string[]>(DEFAULT_STATE.titleTags);
   const [companyFilter, setCompanyFilter] = useState(DEFAULT_STATE.companyFilter);
@@ -183,8 +191,6 @@ export default function JobSearch() {
 
   // Initialize dark mode and listen for system preference changes
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const savedMode = localStorage.getItem("darkMode");
     
@@ -212,6 +218,9 @@ export default function JobSearch() {
     document.documentElement.classList.toggle("dark", newMode);
     localStorage.setItem("darkMode", String(newMode));
   };
+
+  // Prevent hydration mismatch by not rendering dark mode toggle until client-side
+  const isDarkModeReady = darkMode !== null;
 
   useEffect(() => {
     if (initialized.current) return;
@@ -305,9 +314,6 @@ export default function JobSearch() {
     nextPage = 1,
     options: FetchOptions = { overrideState: {}, skipUrlUpdate: false }
   ) {
-    setIsLoading(true);
-    setError(null);
-
     const nextState: QueryState = {
       titleTags,
       companyFilter,
@@ -318,6 +324,43 @@ export default function JobSearch() {
       ...(options.overrideState ?? {}),
       page: nextPage,
     };
+
+    // Build cache key
+    const cacheKey = `${nextState.titleTags.join(',')}_${nextState.companyFilter}_${nextState.locationTags.join(',')}_${nextState.statusFilter}_${nextState.sortOption.sort}_${nextState.sortOption.sortDir}_${nextPage}_${nextState.pageSize}`;
+    
+    // Check cache first
+    const cached = cacheRef.current.get(cacheKey);
+    if (cached) {
+      // Use cached data instantly
+      console.log(`⚡ Using cached page ${nextPage} (instant load)`);
+      setData(cached);
+      setPage(nextState.page);
+      setPageSize(nextState.pageSize);
+      setTitleTags(nextState.titleTags);
+      setCompanyFilter(nextState.companyFilter);
+      setLocationTags(nextState.locationTags);
+      setStatusFilter(nextState.statusFilter);
+      setSortOption(nextState.sortOption);
+      
+      if (!options.skipUrlUpdate) {
+        const urlParams = buildSearchParams(nextState);
+        router.replace(`?${urlParams.toString()}`, { scroll: false });
+      }
+      
+      if (cached.items.length > 0 && !selectedJob) {
+        setSelectedJob(cached.items[0]);
+        setSelectedIndex(0);
+      }
+      
+      // Still prefetch next pages even when using cache
+      prefetchNextPages(nextState, nextPage);
+      return; // Skip loading - instant!
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    console.log(`📡 Fetching page ${nextPage} from API...`);
 
     try {
       if (!options.skipUrlUpdate) {
@@ -356,6 +399,14 @@ export default function JobSearch() {
       if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const result = (await res.json()) as ApiResponse;
 
+      // Store in cache
+      cacheRef.current.set(cacheKey, result);
+      // Limit cache size to 50 entries
+      if (cacheRef.current.size > 50) {
+        const firstKey = cacheRef.current.keys().next().value;
+        if (firstKey) cacheRef.current.delete(firstKey);
+      }
+
       setData({
         items: result.items,
         total: result.total,
@@ -393,11 +444,111 @@ export default function JobSearch() {
       ) {
         setLastUpdatedAt(latestFromPage);
       }
+      
+      // Prefetch next 5 pages in background for instant pagination
+      prefetchNextPages(nextState, nextPage);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed");
     } finally {
       setIsLoading(false);
     }
+  }
+
+  // Process the fetch queue one item at a time
+  async function processQueue() {
+    if (isProcessingRef.current) return; // Already processing
+    if (fetchQueueRef.current.length === 0) return; // Queue empty
+    
+    isProcessingRef.current = true;
+    
+    while (fetchQueueRef.current.length > 0) {
+      const item = fetchQueueRef.current.shift();
+      if (!item) break;
+      
+      const { cacheKey, pageNum, state } = item;
+      
+      // Skip if already cached
+      if (cacheRef.current.has(cacheKey)) {
+        console.log(`✅ Page ${pageNum} already cached, skipping from queue`);
+        continue;
+      }
+      
+      try {
+        console.log(`⏳ Loading page ${pageNum} from queue (${fetchQueueRef.current.length} remaining)...`);
+        const params = new URLSearchParams();
+        if (state.titleTags.length > 0) params.set("title", state.titleTags.join(","));
+        if (state.companyFilter.trim()) params.set("companyName", state.companyFilter.trim());
+        if (state.locationTags.length > 0) params.set("location", state.locationTags.join(","));
+        if (state.statusFilter === "open") params.set("status", "ACTIVE");
+        else if (state.statusFilter === "closed") params.set("status", "CLOSED");
+        params.set("page", String(pageNum));
+        params.set("pageSize", String(state.pageSize));
+        params.set("sort", state.sortOption.sort);
+        params.set("sortDir", state.sortOption.sortDir);
+        
+        const res = await fetch(`/api/jobs?${params.toString()}`);
+        if (res.ok) {
+          const result = await res.json();
+          cacheRef.current.set(cacheKey, result);
+          console.log(`✅ Page ${pageNum} loaded (${result.items.length} jobs)`);
+          
+          // Limit cache size
+          if (cacheRef.current.size > 50) {
+            const firstKey = cacheRef.current.keys().next().value;
+            if (firstKey) cacheRef.current.delete(firstKey);
+          }
+        } else {
+          console.log(`❌ Failed to load page ${pageNum}`);
+        }
+      } catch (error) {
+        console.log(`❌ Error loading page ${pageNum}:`, error);
+      }
+    }
+    
+    isProcessingRef.current = false;
+    console.log(`🏁 Queue processing complete`);
+  }
+
+  // Add pages to the fetch queue
+  function addToQueue(state: QueryState, currentPage: number) {
+    const maxPage = Math.ceil(data.total / state.pageSize);
+    const pagesToPrefetch = 10;
+    
+    const newPages: number[] = [];
+    
+    for (let i = 1; i <= pagesToPrefetch; i++) {
+      const nextPageNum = currentPage + i;
+      if (nextPageNum > maxPage) break;
+      
+      const cacheKey = `${state.titleTags.join(',')}_${state.companyFilter}_${state.locationTags.join(',')}_${state.statusFilter}_${state.sortOption.sort}_${state.sortOption.sortDir}_${nextPageNum}_${state.pageSize}`;
+      
+      // Skip if already cached
+      if (cacheRef.current.has(cacheKey)) {
+        continue;
+      }
+      
+      // Skip if already in queue
+      if (fetchQueueRef.current.some(item => item.cacheKey === cacheKey)) {
+        continue;
+      }
+      
+      // Add to queue
+      fetchQueueRef.current.push({ cacheKey, pageNum: nextPageNum, state });
+      newPages.push(nextPageNum);
+    }
+    
+    if (newPages.length > 0) {
+      console.log(`📥 Added pages ${newPages.join(', ')} to queue (${fetchQueueRef.current.length} total in queue)`);
+      // Start processing if not already running
+      processQueue();
+    } else {
+      console.log(`✅ All next 5 pages already cached or queued`);
+    }
+  }
+
+  // Prefetch next 5 pages in the background
+  async function prefetchNextPages(state: QueryState, currentPage: number) {
+    addToQueue(state, currentPage);
   }
 
   async function fetchLatestUpdatedAt() {

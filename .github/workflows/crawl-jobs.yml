@@ -43,4 +43,7 @@ jobs:
         working-directory: ./app
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: npm run crawl
+        run: |
+          # Use direct connection for crawling (long-running process)
+          export DATABASE_URL="${DATABASE_URL//25061/25060}"
+          npm run crawl

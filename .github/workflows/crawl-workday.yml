@@ -1,0 +1,58 @@
+name: Crawl Workday Jobs
+
+on:
+  schedule:
+    # Run twice daily at 04:00 and 16:00 UTC (4 hours after Greenhouse)
+    - cron: '0 4,16 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 720
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: app/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: ./app
+        run: npm ci
+      
+      - name: Generate Prisma Client
+        working-directory: ./app
+        run: npx prisma generate
+
+      - name: Run Prisma migrations
+        working-directory: ./app
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # Use direct connection for migrations
+          export DATABASE_URL="${DATABASE_URL//25061/25060}&connection_limit=1"
+          npx prisma migrate deploy
+      
+      - name: Run Workday crawler (new companies only)
+        working-directory: ./app
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # Use direct connection for crawling (long-running process)
+          export DATABASE_URL="${DATABASE_URL//25061/25060}"
+          npm run crawl -- --ats=WORKDAY --new-only
+      
+      - name: Run Workday crawler (all companies)
+        working-directory: ./app
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # Use direct connection for crawling (long-running process)
+          export DATABASE_URL="${DATABASE_URL//25061/25060}"
+          npm run crawl -- --ats=WORKDAY

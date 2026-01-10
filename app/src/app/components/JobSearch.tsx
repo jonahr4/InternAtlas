@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
 
-import { JobTable } from "./JobTable";
+import { JobCard, JobCardSkeleton } from "./JobCard";
+import { JobDetailPanel, JobDetailSkeleton } from "./JobDetailPanel";
+import { TagInput } from "./TagInput";
 
 type Job = {
   id: string;
@@ -34,55 +37,66 @@ type SortOption = {
   sortDir: "asc" | "desc";
 };
 
+type StatusFilter = "open" | "closed" | "both";
+
 const SORT_OPTIONS: SortOption[] = [
   { label: "Company (A-Z)", sort: "company", sortDir: "asc" },
   { label: "Company (Z-A)", sort: "company", sortDir: "desc" },
   { label: "Title (A-Z)", sort: "title", sortDir: "asc" },
   { label: "Title (Z-A)", sort: "title", sortDir: "desc" },
-  { label: "Date Found (Newest)", sort: "created_at", sortDir: "desc" },
-  { label: "Date Found (Oldest)", sort: "created_at", sortDir: "asc" },
-  { label: "Date Updated (Newest)", sort: "updated_at", sortDir: "desc" },
-  { label: "Date Updated (Oldest)", sort: "updated_at", sortDir: "asc" },
+  { label: "Newest First", sort: "created_at", sortDir: "desc" },
+  { label: "Oldest First", sort: "created_at", sortDir: "asc" },
 ];
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
+const DEFAULT_PAGE_SIZE = 25;
 
 type QueryState = {
-  titleQuery: string;
+  titleTags: string[];
   companyFilter: string;
-  locationFilter: string;
-  statusOpen: boolean;
-  statusClosed: boolean;
+  locationTags: string[];
+  statusFilter: StatusFilter;
   sortOption: SortOption;
   page: number;
+  pageSize: number;
 };
 
 const DEFAULT_STATE: QueryState = {
-  titleQuery: "",
+  titleTags: [],
   companyFilter: "",
-  locationFilter: "",
-  statusOpen: true,
-  statusClosed: false,
+  locationTags: [],
+  statusFilter: "open",
   sortOption: SORT_OPTIONS[0],
   page: 1,
+  pageSize: DEFAULT_PAGE_SIZE,
 };
 
-function buildSearchParams(state: QueryState) {
+function buildSearchParams(state: QueryState, titleTag?: string, locationTag?: string) {
   const params = new URLSearchParams();
-  if (state.titleQuery.trim()) params.set("title", state.titleQuery.trim());
+  
+  if (state.titleTags.length > 0 && !titleTag) {
+    params.set("title", state.titleTags.join(","));
+  } else if (titleTag) {
+    params.set("title", titleTag);
+  }
+  
   if (state.companyFilter.trim())
     params.set("companyName", state.companyFilter.trim());
-  if (state.locationFilter.trim())
-    params.set("location", state.locationFilter.trim());
+  
+  if (state.locationTags.length > 0 && !locationTag) {
+    params.set("location", state.locationTags.join(","));
+  } else if (locationTag) {
+    params.set("location", locationTag);
+  }
 
-  if (state.statusOpen && !state.statusClosed) {
+  if (state.statusFilter === "open") {
     params.set("status", "ACTIVE");
-  } else if (!state.statusOpen && state.statusClosed) {
+  } else if (state.statusFilter === "closed") {
     params.set("status", "CLOSED");
   }
 
   params.set("page", String(state.page));
-  params.set("pageSize", String(PAGE_SIZE));
+  params.set("pageSize", String(state.pageSize));
   params.set("sort", state.sortOption.sort);
   params.set("sortDir", state.sortOption.sortDir);
 
@@ -90,9 +104,11 @@ function buildSearchParams(state: QueryState) {
 }
 
 function parseSearchParams(searchParams: URLSearchParams): QueryState {
-  const titleQuery = searchParams.get("title") ?? "";
+  const titleParam = searchParams.get("title") ?? "";
+  const titleTags = titleParam ? titleParam.split(",").map(t => t.trim()).filter(Boolean) : [];
   const companyFilter = searchParams.get("companyName") ?? "";
-  const locationFilter = searchParams.get("location") ?? "";
+  const locationParam = searchParams.get("location") ?? "";
+  const locationTags = locationParam ? locationParam.split(",").map(t => t.trim()).filter(Boolean) : [];
   const statusParam = (searchParams.get("status") ?? "").toUpperCase();
   const sort = searchParams.get("sort") ?? "";
   const sortDir =
@@ -101,25 +117,33 @@ function parseSearchParams(searchParams: URLSearchParams): QueryState {
     1,
     Number.parseInt(searchParams.get("page") ?? "1", 10)
   );
+  const pageSizeParam = Number.parseInt(searchParams.get("pageSize") ?? String(DEFAULT_PAGE_SIZE), 10);
+  const pageSize = (pageSizeParam === 10 || pageSizeParam === 25 || pageSizeParam === 50) 
+    ? pageSizeParam 
+    : DEFAULT_PAGE_SIZE;
 
   const sortOption =
     SORT_OPTIONS.find(
       (option) => option.sort === sort && option.sortDir === sortDir
     ) ?? DEFAULT_STATE.sortOption;
 
-  const statusOpen =
-    statusParam === "CLOSED" ? false : DEFAULT_STATE.statusOpen;
-  const statusClosed =
-    statusParam === "ACTIVE" ? false : statusParam === "CLOSED";
+  let statusFilter: StatusFilter = "open";
+  if (statusParam === "CLOSED") {
+    statusFilter = "closed";
+  } else if (statusParam === "ACTIVE") {
+    statusFilter = "open";
+  } else if (!statusParam) {
+    statusFilter = "both";
+  }
 
   return {
-    titleQuery,
+    titleTags,
     companyFilter,
-    locationFilter,
-    statusOpen,
-    statusClosed,
+    locationTags,
+    statusFilter,
     sortOption,
     page,
+    pageSize,
   };
 }
 
@@ -127,42 +151,79 @@ export default function JobSearch() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialized = useRef(false);
-  const [rangeLabel, setRangeLabel] = useState<string>("Showing 0 jobs");
+  const jobListRef = useRef<HTMLDivElement>(null);
 
-  const [titleQuery, setTitleQuery] = useState(DEFAULT_STATE.titleQuery);
-  const [companyFilter, setCompanyFilter] = useState(
-    DEFAULT_STATE.companyFilter
-  );
-  const [locationFilter, setLocationFilter] = useState(
-    DEFAULT_STATE.locationFilter
-  );
-  const [statusOpen, setStatusOpen] = useState(DEFAULT_STATE.statusOpen);
-  const [statusClosed, setStatusClosed] = useState(DEFAULT_STATE.statusClosed);
+  const [titleTags, setTitleTags] = useState<string[]>(DEFAULT_STATE.titleTags);
+  const [companyFilter, setCompanyFilter] = useState(DEFAULT_STATE.companyFilter);
+  const [locationTags, setLocationTags] = useState<string[]>(DEFAULT_STATE.locationTags);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(DEFAULT_STATE.statusFilter);
   const [sortOption, setSortOption] = useState(DEFAULT_STATE.sortOption);
   const [page, setPage] = useState(DEFAULT_STATE.page);
+  const [pageSize, setPageSize] = useState(DEFAULT_STATE.pageSize);
 
   const [data, setData] = useState<ApiResponse>({
     items: [],
     total: 0,
     page: 1,
-    pageSize: PAGE_SIZE,
+    pageSize: DEFAULT_PAGE_SIZE,
   });
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
-  const [isLastUpdatedLoading, setIsLastUpdatedLoading] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+
+  // UI State
+  const [darkMode, setDarkMode] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [showLimitWarning, setShowLimitWarning] = useState<{show: boolean, type: 'title' | 'location' | null}>({show: false, type: null});
+
+  // Initialize dark mode and listen for system preference changes
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const savedMode = localStorage.getItem("darkMode");
+    
+    // If user has manually set a preference, use that; otherwise follow system
+    const isDark = savedMode !== null ? savedMode === "true" : mediaQuery.matches;
+    setDarkMode(isDark);
+    document.documentElement.classList.toggle("dark", isDark);
+
+    // Only listen to system changes if user hasn't set a manual preference
+    const handleChange = (e: MediaQueryListEvent) => {
+      if (localStorage.getItem("darkMode") === null) {
+        setDarkMode(e.matches);
+        document.documentElement.classList.toggle("dark", e.matches);
+      }
+    };
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
+  // Toggle dark mode manually
+  const toggleDarkMode = () => {
+    const newMode = !darkMode;
+    setDarkMode(newMode);
+    document.documentElement.classList.toggle("dark", newMode);
+    localStorage.setItem("darkMode", String(newMode));
+  };
 
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
     const parsed = parseSearchParams(new URLSearchParams(searchParams.toString()));
-    setTitleQuery(parsed.titleQuery);
+    setTitleTags(parsed.titleTags);
     setCompanyFilter(parsed.companyFilter);
-    setLocationFilter(parsed.locationFilter);
-    setStatusOpen(parsed.statusOpen);
-    setStatusClosed(parsed.statusClosed);
+    setLocationTags(parsed.locationTags);
+    setStatusFilter(parsed.statusFilter);
     setSortOption(parsed.sortOption);
     setPage(parsed.page);
+    setPageSize(parsed.pageSize);
     fetchJobs(parsed.page, { overrideState: parsed, skipUrlUpdate: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -170,6 +231,57 @@ export default function JobSearch() {
   useEffect(() => {
     fetchLatestUpdatedAt();
   }, []);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (menuOpen || mobileDetailOpen) return;
+      
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+
+      if (e.key === "ArrowDown" || e.key === "j") {
+        e.preventDefault();
+        const nextIndex = Math.min(selectedIndex + 1, data.items.length - 1);
+        setSelectedIndex(nextIndex);
+        if (data.items[nextIndex]) {
+          setSelectedJob(data.items[nextIndex]);
+        }
+      } else if (e.key === "ArrowUp" || e.key === "k") {
+        e.preventDefault();
+        const nextIndex = Math.max(selectedIndex - 1, 0);
+        setSelectedIndex(nextIndex);
+        if (data.items[nextIndex]) {
+          setSelectedJob(data.items[nextIndex]);
+        }
+      } else if (e.key === "Enter" && selectedJob) {
+        e.preventDefault();
+        window.open(selectedJob.jobUrl, "_blank");
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setSelectedJob(null);
+        setSelectedIndex(-1);
+        setMobileDetailOpen(false);
+      } else if (e.key === "b" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setBulkMode(!bulkMode);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedIndex, data.items, selectedJob, menuOpen, mobileDetailOpen, bulkMode]);
+
+  // Scroll selected job into view
+  useEffect(() => {
+    if (selectedIndex >= 0 && jobListRef.current) {
+      const jobButtons = jobListRef.current.querySelectorAll("button");
+      const selectedButton = jobButtons[selectedIndex];
+      if (selectedButton) {
+        selectedButton.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    }
+  }, [selectedIndex]);
 
   type FetchOptions = {
     overrideState?: Partial<QueryState>;
@@ -182,11 +294,11 @@ export default function JobSearch() {
     const absMs = Math.abs(diffMs);
     const minutes = Math.round(absMs / (1000 * 60));
     if (minutes < 1) return "just now";
-    if (minutes < 60) return `${minutes} min${minutes === 1 ? "" : "s"} ${diffMs < 0 ? "ago" : "from now"}`;
+    if (minutes < 60) return `${minutes}m ago`;
     const hours = Math.round(minutes / 60);
-    if (hours < 24) return `${hours} hr${hours === 1 ? "" : "s"} ${diffMs < 0 ? "ago" : "from now"}`;
+    if (hours < 24) return `${hours}h ago`;
     const days = Math.round(hours / 24);
-    return `${days} day${days === 1 ? "" : "s"} ${diffMs < 0 ? "ago" : "from now"}`;
+    return `${days}d ago`;
   }
 
   async function fetchJobs(
@@ -197,43 +309,73 @@ export default function JobSearch() {
     setError(null);
 
     const nextState: QueryState = {
-      titleQuery,
+      titleTags,
       companyFilter,
-      locationFilter,
-      statusOpen,
-      statusClosed,
+      locationTags,
+      statusFilter,
       sortOption,
+      pageSize,
       ...(options.overrideState ?? {}),
       page: nextPage,
     };
 
     try {
-      const params = buildSearchParams(nextState);
       if (!options.skipUrlUpdate) {
-        router.replace(`?${params.toString()}`, { scroll: false });
+        const urlParams = buildSearchParams(nextState);
+        router.replace(`?${urlParams.toString()}`, { scroll: false });
       }
 
-      const res = await fetch(`/api/jobs?${params.toString()}`);
-      if (!res.ok) {
-        throw new Error(`Request failed: ${res.status}`);
+      // Build single API request with comma-separated terms
+      const params = new URLSearchParams();
+      
+      if (nextState.titleTags.length > 0) {
+        params.set("title", nextState.titleTags.join(","));
       }
-      const payload = (await res.json()) as ApiResponse;
-      setData(payload);
+      
+      if (nextState.companyFilter.trim()) {
+        params.set("companyName", nextState.companyFilter.trim());
+      }
+      
+      if (nextState.locationTags.length > 0) {
+        params.set("location", nextState.locationTags.join(","));
+      }
+      
+      if (nextState.statusFilter === "open") {
+        params.set("status", "ACTIVE");
+      } else if (nextState.statusFilter === "closed") {
+        params.set("status", "CLOSED");
+      }
+      
+      params.set("page", String(nextPage));
+      params.set("pageSize", String(nextState.pageSize));
+      params.set("sort", nextState.sortOption.sort);
+      params.set("sortDir", nextState.sortOption.sortDir);
+
+      // Single API call instead of cartesian product
+      const res = await fetch(`/api/jobs?${params.toString()}`);
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      const result = (await res.json()) as ApiResponse;
+
+      setData({
+        items: result.items,
+        total: result.total,
+        page: nextPage,
+        pageSize: nextState.pageSize,
+      });
       setPage(nextState.page);
-      setTitleQuery(nextState.titleQuery);
+      setPageSize(nextState.pageSize);
+      setTitleTags(nextState.titleTags);
       setCompanyFilter(nextState.companyFilter);
-      setLocationFilter(nextState.locationFilter);
-      setStatusOpen(nextState.statusOpen);
-      setStatusClosed(nextState.statusClosed);
+      setLocationTags(nextState.locationTags);
+      setStatusFilter(nextState.statusFilter);
       setSortOption(nextState.sortOption);
-      const start = (payload.page - 1) * payload.pageSize + 1;
-      const end = Math.min(payload.total, start + payload.items.length - 1);
-      setRangeLabel(
-        payload.total === 0
-          ? "Showing 0 jobs"
-          : `Showing ${start}–${end} of ${payload.total}`
-      );
-      const latestFromPage = payload.items.reduce<Date | null>(
+      
+      if (result.items.length > 0 && !selectedJob) {
+        setSelectedJob(result.items[0]);
+        setSelectedIndex(0);
+      }
+      
+      const latestFromPage = result.items.reduce<Date | null>(
         (latestDate, job) => {
           const ts = job.updatedAt ?? job.createdAt;
           const date = new Date(ts);
@@ -260,7 +402,6 @@ export default function JobSearch() {
 
   async function fetchLatestUpdatedAt() {
     try {
-      setIsLastUpdatedLoading(true);
       const res = await fetch(`/api/jobs/last-updated`);
       if (!res.ok) return;
       const payload = (await res.json()) as { lastUpdated: string | null };
@@ -269,253 +410,647 @@ export default function JobSearch() {
       if (!Number.isNaN(date.getTime())) {
         setLastUpdatedAt(date);
       }
-    } finally {
-      setIsLastUpdatedLoading(false);
+    } catch {
+      // Ignore errors
     }
   }
 
-  const activeChips = useMemo(() => {
-    const chips: Array<{ label: string; override: Partial<QueryState> }> = [];
-    if (titleQuery.trim()) {
-      chips.push({
-        label: `Title: ${titleQuery.trim()}`,
-        override: { titleQuery: "" },
-      });
-    }
-    if (companyFilter.trim()) {
-      chips.push({
-        label: `Company: ${companyFilter.trim()}`,
-        override: { companyFilter: "" },
-      });
-    }
-    if (locationFilter.trim()) {
-      chips.push({
-        label: `Location: ${locationFilter.trim()}`,
-        override: { locationFilter: "" },
-      });
-    }
-    if (statusOpen && !statusClosed) {
-      chips.push({
-        label: "Status: Open",
-        override: { statusOpen: false },
-      });
-    } else if (!statusOpen && statusClosed) {
-      chips.push({
-        label: "Status: Closed",
-        override: { statusClosed: false },
-      });
-    }
-    return chips;
-  }, [companyFilter, locationFilter, statusClosed, statusOpen, titleQuery]);
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (titleTags.length > 0) count++;
+    if (companyFilter.trim()) count++;
+    if (locationTags.length > 0) count++;
+    return count;
+  }, [titleTags, companyFilter, locationTags]);
 
   function resetFilters() {
-    setTitleQuery(DEFAULT_STATE.titleQuery);
+    setTitleTags(DEFAULT_STATE.titleTags);
     setCompanyFilter(DEFAULT_STATE.companyFilter);
-    setLocationFilter(DEFAULT_STATE.locationFilter);
-    setStatusOpen(DEFAULT_STATE.statusOpen);
-    setStatusClosed(DEFAULT_STATE.statusClosed);
+    setLocationTags(DEFAULT_STATE.locationTags);
+    setStatusFilter(DEFAULT_STATE.statusFilter);
     setSortOption(DEFAULT_STATE.sortOption);
     setPage(DEFAULT_STATE.page);
+    setPageSize(DEFAULT_STATE.pageSize);
+    setSelectedJob(null);
+    setSelectedIndex(-1);
     fetchJobs(1, { overrideState: DEFAULT_STATE });
   }
 
-  return (
-    <section className="mx-auto flex w-[80vw] max-w-6xl flex-col">
-      <div className="rounded-2xl border border-white/20 bg-white/80 shadow-lg backdrop-blur-md">
-        <div className="flex items-center justify-between border-b border-slate-100/50 bg-gradient-to-r from-indigo-50/30 to-purple-50/30 px-5 py-4">
-          <h2 className="bg-gradient-to-r from-indigo-700 to-purple-700 bg-clip-text text-2xl font-bold text-transparent">Job Board</h2>
-          <p className="text-sm text-slate-600">
-            Last updated: {isLastUpdatedLoading ? "…" : formatRelativeTime(lastUpdatedAt)}
-          </p>
-        </div>
+  // Bulk mode handlers
+  const handleJobCheck = (jobId: string, checked: boolean) => {
+    const newSet = new Set(selectedJobs);
+    if (checked) {
+      newSet.add(jobId);
+    } else {
+      newSet.delete(jobId);
+    }
+    setSelectedJobs(newSet);
+  };
 
-        <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-            <input
-              className="h-11 flex-1 rounded-lg border border-slate-200 px-3 text-sm outline-none ring-0 transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
-              placeholder="Search job title..."
-              value={titleQuery}
-              onChange={(event) => setTitleQuery(event.target.value)}
-            />
-            <input
-              className="h-11 flex-1 rounded-lg border border-slate-200 px-3 text-sm outline-none ring-0 transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
-              placeholder="Filter by company"
-              value={companyFilter}
-              onChange={(event) => setCompanyFilter(event.target.value)}
-            />
-            <input
-              className="h-11 flex-1 rounded-lg border border-slate-200 px-3 text-sm outline-none ring-0 transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
-              placeholder="Filter by location"
-              value={locationFilter}
-              onChange={(event) => setLocationFilter(event.target.value)}
+  const selectAllJobs = () => {
+    setSelectedJobs(new Set(data.items.map(j => j.id)));
+  };
+
+  const deselectAllJobs = () => {
+    setSelectedJobs(new Set());
+  };
+
+  const handleBulkAddToApply = () => {
+    console.log("Bulk add to 'To Apply':", Array.from(selectedJobs));
+    // TODO: Implement backend integration
+  };
+
+  const handleBulkAddToApplied = () => {
+    console.log("Bulk add to 'Applied':", Array.from(selectedJobs));
+    // TODO: Implement backend integration
+  };
+
+  const handleAddToApply = (jobId: string) => {
+    console.log("Add to 'To Apply' board:", jobId);
+  };
+
+  const handleAddToApplied = (jobId: string) => {
+    console.log("Add to 'Applied' board:", jobId);
+  };
+
+  const handleJobClick = (job: Job, index: number) => {
+    setSelectedJob(job);
+    setSelectedIndex(index);
+    // On mobile, open the detail sheet
+    if (window.innerWidth < 768) {
+      setMobileDetailOpen(true);
+    }
+  };
+
+  const totalPages = Math.max(1, Math.ceil(data.total / pageSize));
+  const start = data.total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(data.total, start + data.items.length - 1);
+
+  const searchSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (titleTags.length > 0) {
+      parts.push(`Titles: ${titleTags.join(" + ")}`);
+    }
+    if (locationTags.length > 0) {
+      parts.push(`Locations: ${locationTags.join(" + ")}`);
+    }
+    return parts.join(" • ");
+  }, [titleTags, locationTags]);
+
+  return (
+    <div className="flex h-screen flex-col bg-slate-50 dark:bg-slate-900">
+      {/* Header */}
+      <header className="flex-none border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <div className="flex h-14 md:h-16 items-center justify-between px-4 lg:px-6">
+          {/* Logo */}
+          <div className="flex items-center gap-2">
+            <Image
+              src="/logo.svg"
+              alt="InternAtlas"
+              width={160}
+              height={40}
+              priority
+              className="h-8 md:h-10 w-auto"
             />
           </div>
-          <div className="flex items-center gap-2">
+
+          {/* Right Side Actions */}
+          <div className="flex items-center gap-2 md:gap-3">
+            <span className="hidden sm:inline text-xs md:text-sm text-slate-500 dark:text-slate-400">
+              Updated {formatRelativeTime(lastUpdatedAt)}
+            </span>
+            
+            {/* Dark Mode Toggle */}
+            <button
+              type="button"
+              onClick={toggleDarkMode}
+              className="hidden md:flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 transition hover:bg-slate-100 dark:hover:bg-slate-700"
+              title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {darkMode ? (
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              ) : (
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                </svg>
+              )}
+            </button>
+
+            <button
+              type="button"
+              className="hidden md:inline-flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-600"
+            >
+              Sign in for more features
+            </button>
+            
+            {/* Menu Button */}
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 transition hover:bg-slate-100 dark:hover:bg-slate-700"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Search Bar */}
+        <div className="border-t border-slate-100 dark:border-slate-700 px-4 py-3 lg:px-6">
+          <div className="flex flex-wrap items-start gap-2 md:gap-3">
+            <div className="flex flex-1 flex-wrap md:flex-nowrap items-start gap-2 min-w-0">
+              <div className="relative flex-1 md:flex-[2] min-w-[180px]">
+                {showLimitWarning.show && showLimitWarning.type === 'title' && (
+                  <div className="absolute -top-10 left-0 right-0 z-10 animate-fade-in">
+                    <div className="bg-amber-500 text-white text-xs font-medium px-3 py-2 rounded-lg shadow-lg">
+                      Limited to 5 search terms
+                    </div>
+                  </div>
+                )}
+                <TagInput
+                  tags={titleTags}
+                  onTagsChange={(newTags) => {
+                    if (newTags.length > 5) {
+                      setShowLimitWarning({show: true, type: 'title'});
+                      setTimeout(() => setShowLimitWarning({show: false, type: null}), 2000);
+                      return;
+                    }
+                    setTitleTags(newTags);
+                  }}
+                  placeholder="Job titles (Enter to add)"
+                  className="flex-1 md:flex-[2] min-w-[180px]"
+                />
+              </div>
+              <input
+                className="h-10 w-full md:w-32 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 px-3 text-sm text-slate-900 dark:text-slate-100 outline-none transition focus:border-teal-300 focus:bg-white dark:focus:bg-slate-600 focus:ring-2 focus:ring-teal-100 dark:focus:ring-teal-900"
+                placeholder="Company"
+                value={companyFilter}
+                onChange={(e) => setCompanyFilter(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && fetchJobs(1)}
+              />
+              <div className="relative flex-1 min-w-[180px]">
+                {showLimitWarning.show && showLimitWarning.type === 'location' && (
+                  <div className="absolute -top-10 left-0 right-0 z-10 animate-fade-in">
+                    <div className="bg-amber-500 text-white text-xs font-medium px-3 py-2 rounded-lg shadow-lg">
+                      Limited to 5 search terms
+                    </div>
+                  </div>
+                )}
+                <TagInput
+                  tags={locationTags}
+                  onTagsChange={(newTags) => {
+                    if (newTags.length > 5) {
+                      setShowLimitWarning({show: true, type: 'location'});
+                      setTimeout(() => setShowLimitWarning({show: false, type: null}), 2000);
+                      return;
+                    }
+                    setLocationTags(newTags);
+                  }}
+                  placeholder="Locations (Enter to add)"
+                  className="flex-1 min-w-[180px]"
+                  icon="location"
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              className="h-10 w-full md:w-auto rounded-lg bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed relative"
+              onClick={() => fetchJobs(1)}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Searching...
+                </span>
+              ) : (
+                "Search"
+              )}
+            </button>
+          </div>
+
+          {/* Filter Pills */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {/* Status Filter Dropdown */}
+            <div className="relative">
+              <select
+                className={`h-8 appearance-none rounded-full pl-3 pr-8 text-sm font-medium transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-100 dark:focus:ring-teal-900 ${
+                  statusFilter === "open"
+                    ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400"
+                    : statusFilter === "closed"
+                    ? "bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400"
+                    : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                }`}
+                value={statusFilter}
+                onChange={(e) => {
+                  const newStatus = e.target.value as StatusFilter;
+                  setStatusFilter(newStatus);
+                  fetchJobs(1, { overrideState: { statusFilter: newStatus } });
+                }}
+              >
+                <option value="open">● Open Jobs</option>
+                <option value="closed">● Closed Jobs</option>
+                <option value="both">● All Jobs</option>
+              </select>
+              <svg className="absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 pointer-events-none text-current opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+            
+            <div className="h-5 w-px bg-slate-200 dark:bg-slate-600" />
+            
             <select
-              className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none ring-0 transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+              className="h-8 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-2 text-sm text-slate-600 dark:text-slate-300 outline-none transition focus:border-teal-300 focus:ring-2 focus:ring-teal-100 dark:focus:ring-teal-900"
               value={sortOption.label}
-              onChange={(event) => {
-                const next =
-                  SORT_OPTIONS.find(
-                    (option) => option.label === event.target.value
-                  ) ?? SORT_OPTIONS[0];
+              onChange={(e) => {
+                const next = SORT_OPTIONS.find((opt) => opt.label === e.target.value) ?? SORT_OPTIONS[0];
                 setSortOption(next);
                 fetchJobs(1, { overrideState: { sortOption: next } });
               }}
             >
-              {SORT_OPTIONS.map((option) => (
-                <option key={option.label} value={option.label}>
-                  {option.label}
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.label} value={opt.label}>
+                  {opt.label}
                 </option>
               ))}
             </select>
-            <button
-              type="button"
-              className="h-11 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-70"
-              onClick={() => fetchJobs(1)}
-              disabled={isLoading}
+
+            {/* Page Size Dropdown */}
+            <select
+              className="h-8 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-2 text-sm text-slate-600 dark:text-slate-300 outline-none transition focus:border-teal-300 focus:ring-2 focus:ring-teal-100 dark:focus:ring-teal-900"
+              value={pageSize}
+              onChange={(e) => {
+                const newSize = Number(e.target.value);
+                setPageSize(newSize);
+                fetchJobs(1, { overrideState: { pageSize: newSize } });
+              }}
             >
-              Search
-            </button>
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>
+                  {size} per page
+                </option>
+              ))}
+            </select>
+
+            {/* Bulk Mode Toggle */}
             <button
               type="button"
-              className="h-11 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              onClick={() => {
+                setBulkMode(!bulkMode);
+                if (bulkMode) setSelectedJobs(new Set());
+              }}
+              className={`hidden md:inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition ${
+                bulkMode
+                  ? "bg-teal-100 dark:bg-teal-900/50 text-teal-700 dark:text-teal-400"
+                  : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
+              }`}
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              Bulk
+            </button>
+
+            {activeFiltersCount > 0 && (
+            <button
+              type="button"
               onClick={resetFilters}
-              disabled={isLoading}
+                className="text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
             >
-              Reset
+                Clear filters
             </button>
+            )}
+            
+            {searchSummary && (
+              <span className="hidden md:inline text-sm text-slate-500 dark:text-slate-400">
+                {searchSummary}
+              </span>
+            )}
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 px-5 pb-4">
-          <div className="flex items-center gap-3 text-sm text-slate-700">
-            <label className="inline-flex items-center gap-2">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                checked={statusOpen}
-                onChange={(event) => {
-                  setStatusOpen(event.target.checked);
-                  fetchJobs(1, { overrideState: { statusOpen: event.target.checked } });
-                }}
-              />
-              Open
-            </label>
-            <label className="inline-flex items-center gap-2">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                checked={statusClosed}
-                onChange={(event) => {
-                  setStatusClosed(event.target.checked);
-                  fetchJobs(1, { overrideState: { statusClosed: event.target.checked } });
-                }}
-              />
-              Closed
-            </label>
-          </div>
-          {activeChips.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              {activeChips.map((chip) => (
+        {/* Bulk Mode Actions Bar */}
+        {bulkMode && selectedJobs.size > 0 && (
+          <div className="border-t border-slate-100 dark:border-slate-700 bg-teal-50 dark:bg-teal-900/30 px-4 py-2 lg:px-6">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-teal-700 dark:text-teal-400">
+                {selectedJobs.size} job{selectedJobs.size !== 1 ? "s" : ""} selected
+              </span>
+              <div className="flex items-center gap-2">
                 <button
-                  key={chip.label}
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-200"
-                  onClick={() => {
-                    if (chip.override.titleQuery !== undefined) {
-                      setTitleQuery(chip.override.titleQuery);
-                    }
-                    if (chip.override.companyFilter !== undefined) {
-                      setCompanyFilter(chip.override.companyFilter);
-                    }
-                    if (chip.override.locationFilter !== undefined) {
-                      setLocationFilter(chip.override.locationFilter);
-                    }
-                    if (chip.override.statusOpen !== undefined) {
-                      setStatusOpen(chip.override.statusOpen);
-                    }
-                    if (chip.override.statusClosed !== undefined) {
-                      setStatusClosed(chip.override.statusClosed);
-                    }
-                    fetchJobs(1, { overrideState: { ...chip.override, page: 1 } });
-                  }}
+                  onClick={handleBulkAddToApply}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-teal-700"
                 >
-                  {chip.label}
-                  <span className="text-slate-400">×</span>
+                  Add to "To Apply"
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={handleBulkAddToApplied}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-600"
+                >
+                  Mark as Applied
+                </button>
+          </div>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={selectAllJobs}
+                  className="text-sm text-teal-600 dark:text-teal-400 hover:underline"
+                >
+                  Select all
+                </button>
               <button
                 type="button"
-                className="text-xs font-semibold text-indigo-600 hover:text-indigo-500"
-                onClick={resetFilters}
-                disabled={isLoading}
+                  onClick={deselectAllJobs}
+                  className="text-sm text-slate-500 dark:text-slate-400 hover:underline"
               >
-                Clear all
+                  Deselect all
               </button>
             </div>
-          ) : (
-            <div className="text-xs text-slate-500">
-              Tip: apply filters to narrow results. They’ll stay in the URL so you can refresh or share.
+            </div>
             </div>
           )}
+      </header>
+
+      {/* Error Banner */}
+      {error && (
+        <div className="flex-none bg-red-50 dark:bg-red-900/30 border-b border-red-100 dark:border-red-900 px-4 py-2 text-sm text-red-700 dark:text-red-400">
+          {error}
         </div>
+      )}
 
-        {error ? <div className="px-5 pb-4 text-sm text-amber-700">{error}</div> : null}
+      {/* Main Content */}
+      <main className="flex flex-1 overflow-hidden">
+        {/* Left Pane - Job List */}
+        <div className="flex w-full md:w-[400px] lg:w-[440px] flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+          {/* Results Header */}
+          <div className="flex-none border-b border-slate-100 dark:border-slate-700 px-4 py-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                {data.total.toLocaleString()} jobs
+              </span>
+              <span className="text-sm text-slate-500 dark:text-slate-400">
+                {start}–{end}
+              </span>
+            </div>
+          </div>
 
-        <div className="border-t border-slate-100 px-5 py-4">
-          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm text-slate-700">{rangeLabel}</div>
-            <div className="flex gap-2">
+          {/* Job List */}
+          <div ref={jobListRef} className="flex-1 overflow-y-auto">
+            {isLoading && data.items.length === 0 ? (
+              // Skeleton loading state with progress indicator
+              <div>
+                <div className="px-4 py-3 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-100 dark:border-teal-800">
+                  <div className="flex items-center gap-2 text-sm text-teal-700 dark:text-teal-400">
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="font-medium">Searching jobs...</span>
+                  </div>
+                </div>
+                {[...Array(8)].map((_, i) => (
+                  <JobCardSkeleton key={i} index={i} />
+                ))}
+              </div>
+            ) : data.items.length === 0 ? (
+              // Empty state
+              <div className="flex flex-col items-center justify-center py-16 px-4 text-center animate-fade-in">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-700">
+                  <svg className="h-8 w-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-lg font-medium text-slate-600 dark:text-slate-400">No jobs found</p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-500">Try adjusting your search filters</p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTitleTags(["Software Engineer"]);
+                      fetchJobs(1, { overrideState: { titleTags: ["Software Engineer"] } });
+                    }}
+                    className="rounded-full bg-slate-100 dark:bg-slate-700 px-3 py-1 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
+                  >
+                    Software Engineer
+                  </button>
               <button
                 type="button"
-                className="h-9 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm transition hover:border-slate-300 disabled:opacity-50"
-                onClick={() => fetchJobs(Math.max(1, page - 1))}
-                disabled={page <= 1 || isLoading}
-              >
-                Prev
+                    onClick={() => {
+                      setTitleTags(["Intern"]);
+                      fetchJobs(1, { overrideState: { titleTags: ["Intern"] } });
+                    }}
+                    className="rounded-full bg-slate-100 dark:bg-slate-700 px-3 py-1 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
+                  >
+                    Intern
               </button>
               <button
                 type="button"
-                className="h-9 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm transition hover:border-slate-300 disabled:opacity-50"
-                onClick={() => fetchJobs(page + 1)}
-                disabled={page >= Math.max(1, Math.ceil(data.total / PAGE_SIZE)) || isLoading}
-              >
-                Next
+                    onClick={() => {
+                      setTitleTags(["Data Science"]);
+                      fetchJobs(1, { overrideState: { titleTags: ["Data Science"] } });
+                    }}
+                    className="rounded-full bg-slate-100 dark:bg-slate-700 px-3 py-1 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
+                  >
+                    Data Science
               </button>
             </div>
           </div>
-          <JobTable
-            jobs={data.items}
-            total={data.total}
-            page={page}
-            pageSize={PAGE_SIZE}
-            isLoading={isLoading}
-            onPageChange={(next) => fetchJobs(next)}
+            ) : (
+              data.items.map((job, index) => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  isSelected={selectedJob?.id === job.id}
+                  onClick={() => handleJobClick(job, index)}
+                  bulkMode={bulkMode}
+                  isChecked={selectedJobs.has(job.id)}
+                  onCheck={(checked) => handleJobCheck(job.id, checked)}
+                  index={index}
+                />
+              ))
+            )}
+          </div>
+
+          {/* Pagination */}
+          <div className="flex-none border-t border-slate-100 dark:border-slate-700 px-4 py-3">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => fetchJobs(page - 1)}
+                disabled={page <= 1 || isLoading}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 transition hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Prev
+              </button>
+              <span className="text-sm text-slate-500 dark:text-slate-400">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => fetchJobs(page + 1)}
+                disabled={page >= totalPages || isLoading}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 transition hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+              >
+                Next
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Pane - Job Details (hidden on mobile) */}
+        <div className="hidden md:flex flex-1 overflow-hidden">
+          {isLoading && !selectedJob ? (
+            <JobDetailSkeleton />
+          ) : (
+            <JobDetailPanel 
+              job={selectedJob}
+              onAddToApply={handleAddToApply}
+              onAddToApplied={handleAddToApplied}
+            />
+          )}
+        </div>
+      </main>
+
+      {/* Mobile Detail Sheet */}
+      {mobileDetailOpen && (
+        <>
+          <div 
+            className="fixed inset-0 z-40 bg-black/50 menu-backdrop md:hidden"
+            onClick={() => setMobileDetailOpen(false)}
           />
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm text-slate-700">{rangeLabel}</div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="h-9 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm transition hover:border-slate-300 disabled:opacity-50"
-                onClick={() => fetchJobs(Math.max(1, page - 1))}
-                disabled={page <= 1 || isLoading}
-              >
-                Prev
-              </button>
-              <button
-                type="button"
-                className="h-9 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm transition hover:border-slate-300 disabled:opacity-50"
-                onClick={() => fetchJobs(page + 1)}
-                disabled={page >= Math.max(1, Math.ceil(data.total / PAGE_SIZE)) || isLoading}
-              >
-                Next
-              </button>
+          <div className="fixed inset-x-0 bottom-0 z-50 md:hidden">
+            <JobDetailPanel 
+              job={selectedJob}
+              onAddToApply={handleAddToApply}
+              onAddToApplied={handleAddToApplied}
+              onClose={() => setMobileDetailOpen(false)}
+              isMobile
+            />
+          </div>
+        </>
+      )}
+
+      {/* Slide-in Menu */}
+      {menuOpen && (
+        <>
+          <div 
+            className="fixed inset-0 z-40 bg-black/50 menu-backdrop"
+            onClick={() => setMenuOpen(false)}
+          />
+          <div className="fixed right-0 top-0 bottom-0 z-50 w-80 bg-white dark:bg-slate-800 shadow-2xl animate-slide-in-right">
+            <div className="flex h-full flex-col">
+              {/* Menu Header */}
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-4 py-4">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Menu</h2>
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen(false)}
+                  className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Menu Items */}
+              <div className="flex-1 overflow-y-auto py-4">
+                {/* Theme Toggle */}
+                <div className="px-4 mb-4">
+                  <button
+                    type="button"
+                    onClick={toggleDarkMode}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-slate-100 dark:hover:bg-slate-700"
+                  >
+                    {darkMode ? (
+                      <svg className="h-5 w-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                    ) : (
+                      <svg className="h-5 w-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                      </svg>
+                    )}
+                    <span className="font-medium text-slate-700 dark:text-slate-200">
+                      {darkMode ? "Light Mode" : "Dark Mode"}
+                    </span>
+                  </button>
+                </div>
+
+                <div className="h-px bg-slate-200 dark:bg-slate-700 mx-4 mb-4" />
+
+                {/* Navigation Links */}
+                <nav className="px-4 space-y-1">
+                  <a
+                    href="/admin"
+                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 dark:hover:bg-slate-700"
+                  >
+                    <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span className="font-medium">Admin</span>
+                  </a>
+                </nav>
+
+                <div className="h-px bg-slate-200 dark:bg-slate-700 mx-4 my-4" />
+
+                {/* Keyboard Shortcuts */}
+                <div className="px-4">
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Keyboard Shortcuts
+                  </h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                      <span>Navigate jobs</span>
+                      <div className="flex gap-1">
+                        <kbd className="rounded bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 font-mono text-xs">↑</kbd>
+                        <kbd className="rounded bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 font-mono text-xs">↓</kbd>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                      <span>Open job</span>
+                      <kbd className="rounded bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 font-mono text-xs">Enter</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                      <span>Close panel</span>
+                      <kbd className="rounded bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 font-mono text-xs">Esc</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                      <span>Bulk mode</span>
+                      <kbd className="rounded bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 font-mono text-xs">B</kbd>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Menu Footer */}
+              <div className="border-t border-slate-200 dark:border-slate-700 px-4 py-4">
+                <button
+                  type="button"
+                  className="w-full rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
+                >
+                  Sign in for more features
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </>
+      )}
       </div>
-    </section>
   );
 }

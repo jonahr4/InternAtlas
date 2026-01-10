@@ -325,65 +325,40 @@ export default function JobSearch() {
         router.replace(`?${urlParams.toString()}`, { scroll: false });
       }
 
-      let allJobs: Job[] = [];
-      let estimatedTotal = 0;
-
-      const titleSearches = nextState.titleTags.length > 0 ? nextState.titleTags : [""];
-      const locationSearches = nextState.locationTags.length > 0 ? nextState.locationTags : [""];
-
-      const fetchPromises: Promise<ApiResponse>[] = [];
+      // Build single API request with comma-separated terms
+      const params = new URLSearchParams();
       
-      for (const title of titleSearches) {
-        for (const location of locationSearches) {
-          const params = new URLSearchParams();
-          if (title) params.set("title", title);
-          if (nextState.companyFilter.trim()) params.set("companyName", nextState.companyFilter.trim());
-          if (location) params.set("location", location);
-          if (nextState.statusFilter === "open") params.set("status", "ACTIVE");
-          else if (nextState.statusFilter === "closed") params.set("status", "CLOSED");
-          params.set("page", String(nextPage));
-          params.set("pageSize", String(nextState.pageSize));
-          params.set("sort", nextState.sortOption.sort);
-          params.set("sortDir", nextState.sortOption.sortDir);
-
-          fetchPromises.push(
-            fetch(`/api/jobs?${params.toString()}`).then(res => {
-              if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-              return res.json() as Promise<ApiResponse>;
-            })
-          );
-        }
+      if (nextState.titleTags.length > 0) {
+        params.set("title", nextState.titleTags.join(","));
       }
-
-      const results = await Promise.all(fetchPromises);
-
-      const seenIds = new Set<string>();
-      for (const result of results) {
-        for (const job of result.items) {
-          if (!seenIds.has(job.id)) {
-            seenIds.add(job.id);
-            allJobs.push(job);
-          }
-        }
-        estimatedTotal = Math.max(estimatedTotal, result.total);
+      
+      if (nextState.companyFilter.trim()) {
+        params.set("companyName", nextState.companyFilter.trim());
       }
+      
+      if (nextState.locationTags.length > 0) {
+        params.set("location", nextState.locationTags.join(","));
+      }
+      
+      if (nextState.statusFilter === "open") {
+        params.set("status", "ACTIVE");
+      } else if (nextState.statusFilter === "closed") {
+        params.set("status", "CLOSED");
+      }
+      
+      params.set("page", String(nextPage));
+      params.set("pageSize", String(nextState.pageSize));
+      params.set("sort", nextState.sortOption.sort);
+      params.set("sortDir", nextState.sortOption.sortDir);
 
-      allJobs.sort((a, b) => {
-        const dir = nextState.sortOption.sortDir === "asc" ? 1 : -1;
-        if (nextState.sortOption.sort === "company") {
-          return a.company.name.localeCompare(b.company.name) * dir;
-        } else if (nextState.sortOption.sort === "title") {
-          return a.title.localeCompare(b.title) * dir;
-        } else {
-          return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * dir;
-        }
-      });
-
-      const paginatedJobs = allJobs.slice(0, nextState.pageSize);
+      // Single API call instead of cartesian product
+      const res = await fetch(`/api/jobs?${params.toString()}`);
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      const result = (await res.json()) as ApiResponse;
 
       setData({
-        items: paginatedJobs,
-        total: allJobs.length > 0 ? Math.max(estimatedTotal, allJobs.length) : 0,
+        items: result.items,
+        total: result.total,
         page: nextPage,
         pageSize: nextState.pageSize,
       });
@@ -395,12 +370,12 @@ export default function JobSearch() {
       setStatusFilter(nextState.statusFilter);
       setSortOption(nextState.sortOption);
       
-      if (paginatedJobs.length > 0 && !selectedJob) {
-        setSelectedJob(paginatedJobs[0]);
+      if (result.items.length > 0 && !selectedJob) {
+        setSelectedJob(result.items[0]);
         setSelectedIndex(0);
       }
       
-      const latestFromPage = paginatedJobs.reduce<Date | null>(
+      const latestFromPage = result.items.reduce<Date | null>(
         (latestDate, job) => {
           const ts = job.updatedAt ?? job.createdAt;
           const date = new Date(ts);
@@ -642,11 +617,21 @@ export default function JobSearch() {
             </div>
             <button
               type="button"
-              className="h-10 w-full md:w-auto rounded-lg bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:opacity-50"
+              className="h-10 w-full md:w-auto rounded-lg bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed relative"
               onClick={() => fetchJobs(1)}
               disabled={isLoading}
             >
-              Search
+              {isLoading ? (
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Searching...
+                </span>
+              ) : (
+                "Search"
+              )}
             </button>
           </div>
 
@@ -820,8 +805,17 @@ export default function JobSearch() {
           {/* Job List */}
           <div ref={jobListRef} className="flex-1 overflow-y-auto">
             {isLoading && data.items.length === 0 ? (
-              // Skeleton loading state
+              // Skeleton loading state with progress indicator
               <div>
+                <div className="px-4 py-3 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-100 dark:border-teal-800">
+                  <div className="flex items-center gap-2 text-sm text-teal-700 dark:text-teal-400">
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="font-medium">Searching jobs...</span>
+                  </div>
+                </div>
                 {[...Array(8)].map((_, i) => (
                   <JobCardSkeleton key={i} index={i} />
                 ))}

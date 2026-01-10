@@ -58,18 +58,35 @@ export async function GET(request: Request) {
   }
 
   if (title) {
-    const tokens = getTokens(title);
-    if (tokens.length > 0) {
+    // Support comma-separated title terms with OR logic
+    const titleTerms = title.split(',').map(t => t.trim()).filter(Boolean);
+    if (titleTerms.length > 0) {
       and.push({
-        AND: tokens.map((token) => ({
-          title: { contains: token, mode: "insensitive" },
-        })),
+        OR: titleTerms.map((term) => {
+          const tokens = getTokens(term);
+          if (tokens.length === 1) {
+            return { title: { contains: tokens[0], mode: "insensitive" } };
+          }
+          return {
+            AND: tokens.map((token) => ({
+              title: { contains: token, mode: "insensitive" },
+            })),
+          };
+        }),
       });
     }
   }
 
   if (location) {
-    and.push({ location: { contains: location, mode: "insensitive" } });
+    // Support comma-separated location terms with OR logic
+    const locationTerms = location.split(',').map(l => l.trim()).filter(Boolean);
+    if (locationTerms.length > 0) {
+      and.push({
+        OR: locationTerms.map((term) => ({
+          location: { contains: term, mode: "insensitive" },
+        })),
+      });
+    }
   }
 
   if (employmentType) {

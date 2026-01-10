@@ -230,7 +230,7 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-6 py-16">
+    <main className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-16">
       <h1 className="text-2xl font-semibold text-zinc-900">
         Admin
       </h1>

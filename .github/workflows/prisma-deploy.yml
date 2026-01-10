@@ -35,7 +35,7 @@ jobs:
         run: |
           # Use direct connection with connection limit for migrations
           # Replace port 25061 with 25060 (direct connection) and add connection_limit=1
-          export DATABASE_URL="${DATABASE_URL//25061/25060}?connection_limit=1"
+          export DATABASE_URL="${DATABASE_URL//25061/25060}&connection_limit=1"
           npx prisma migrate deploy
 
       - name: Trigger Vercel redeploy

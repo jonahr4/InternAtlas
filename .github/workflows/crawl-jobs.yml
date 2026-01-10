@@ -36,7 +36,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           # Use direct connection for migrations
-          export DATABASE_URL="${DATABASE_URL//25061/25060}?connection_limit=1"
+          export DATABASE_URL="${DATABASE_URL//25061/25060}&connection_limit=1"
           npx prisma migrate deploy
       
       - name: Run crawler

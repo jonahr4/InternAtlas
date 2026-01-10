@@ -179,6 +179,7 @@ export default function JobSearch() {
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [showLimitWarning, setShowLimitWarning] = useState<{show: boolean, type: 'title' | 'location' | null}>({show: false, type: null});
 
   // Initialize dark mode from system preference
   useEffect(() => {
@@ -570,28 +571,60 @@ export default function JobSearch() {
 
         {/* Search Bar */}
         <div className="border-t border-slate-100 dark:border-slate-700 px-4 py-3 lg:px-6">
-          <div className="flex flex-wrap items-center gap-2 md:gap-3">
-            <div className="flex flex-1 flex-wrap md:flex-nowrap items-center gap-2 min-w-0">
-              <TagInput
-                tags={titleTags}
-                onTagsChange={(newTags) => setTitleTags(newTags)}
-                placeholder="Job titles (Enter to add)"
-                className="h-10 flex-1 md:flex-[2] min-w-[180px]"
-            />
-            <input
+          <div className="flex flex-wrap items-start gap-2 md:gap-3">
+            <div className="flex flex-1 flex-wrap md:flex-nowrap items-start gap-2 min-w-0">
+              <div className="relative flex-1 md:flex-[2] min-w-[180px]">
+                {showLimitWarning.show && showLimitWarning.type === 'title' && (
+                  <div className="absolute -top-10 left-0 right-0 z-10 animate-fade-in">
+                    <div className="bg-amber-500 text-white text-xs font-medium px-3 py-2 rounded-lg shadow-lg">
+                      Limited to 5 search terms
+                    </div>
+                  </div>
+                )}
+                <TagInput
+                  tags={titleTags}
+                  onTagsChange={(newTags) => {
+                    if (newTags.length > 5) {
+                      setShowLimitWarning({show: true, type: 'title'});
+                      setTimeout(() => setShowLimitWarning({show: false, type: null}), 2000);
+                      return;
+                    }
+                    setTitleTags(newTags);
+                  }}
+                  placeholder="Job titles (Enter to add)"
+                  className="flex-1 md:flex-[2] min-w-[180px]"
+                />
+              </div>
+              <input
                 className="h-10 w-full md:w-32 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 px-3 text-sm text-slate-900 dark:text-slate-100 outline-none transition focus:border-teal-300 focus:bg-white dark:focus:bg-slate-600 focus:ring-2 focus:ring-teal-100 dark:focus:ring-teal-900"
                 placeholder="Company"
-              value={companyFilter}
+                value={companyFilter}
                 onChange={(e) => setCompanyFilter(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && fetchJobs(1)}
               />
-              <TagInput
-                tags={locationTags}
-                onTagsChange={(newTags) => setLocationTags(newTags)}
-                placeholder="Locations (Enter to add)"
-                className="h-10 flex-1 min-w-[180px]"
-                icon="location"
-              />
+              <div className="relative flex-1 min-w-[180px]">
+                {showLimitWarning.show && showLimitWarning.type === 'location' && (
+                  <div className="absolute -top-10 left-0 right-0 z-10 animate-fade-in">
+                    <div className="bg-amber-500 text-white text-xs font-medium px-3 py-2 rounded-lg shadow-lg">
+                      Limited to 5 search terms
+                    </div>
+                  </div>
+                )}
+                <TagInput
+                  tags={locationTags}
+                  onTagsChange={(newTags) => {
+                    if (newTags.length > 5) {
+                      setShowLimitWarning({show: true, type: 'location'});
+                      setTimeout(() => setShowLimitWarning({show: false, type: null}), 2000);
+                      return;
+                    }
+                    setLocationTags(newTags);
+                  }}
+                  placeholder="Locations (Enter to add)"
+                  className="flex-1 min-w-[180px]"
+                  icon="location"
+                />
+              </div>
             </div>
             <button
               type="button"

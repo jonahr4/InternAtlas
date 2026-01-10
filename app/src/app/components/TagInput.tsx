@@ -40,24 +40,26 @@ export function TagInput({
   };
 
   return (
-    <div className={`flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 px-2 py-1.5 transition focus-within:border-teal-300 dark:focus-within:border-teal-600 focus-within:bg-white dark:focus-within:bg-slate-600 focus-within:ring-2 focus-within:ring-teal-100 dark:focus-within:ring-teal-900 ${className}`}>
+    <div className={`flex flex-wrap gap-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 p-1.5 transition focus-within:border-teal-300 dark:focus-within:border-teal-600 focus-within:bg-white dark:focus-within:bg-slate-600 focus-within:ring-2 focus-within:ring-teal-100 dark:focus-within:ring-teal-900 ${className}`}>
       {/* Icon */}
-      {icon === "search" ? (
-        <svg className="h-4 w-4 flex-shrink-0 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
-      ) : (
-        <svg className="h-4 w-4 flex-shrink-0 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-      )}
+      <div className="flex items-center h-7">
+        {icon === "search" ? (
+          <svg className="h-4 w-4 flex-shrink-0 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        ) : (
+          <svg className="h-4 w-4 flex-shrink-0 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        )}
+      </div>
       
       {/* Tags */}
       {tags.map((tag) => (
         <span
           key={tag}
-          className="inline-flex items-center gap-1 rounded-md bg-teal-100 dark:bg-teal-900/50 px-2 py-0.5 text-sm font-medium text-teal-700 dark:text-teal-400 animate-fade-in"
+          className="inline-flex items-center gap-1 h-7 rounded-md bg-teal-100 dark:bg-teal-900/50 px-2 text-sm font-medium text-teal-700 dark:text-teal-400 animate-fade-in"
         >
           {tag}
           <button
@@ -73,13 +75,15 @@ export function TagInput({
       ))}
       
       {/* Input */}
-      <input
-        ref={inputRef}
-        type="text"
-        onKeyDown={handleKeyDown}
-        placeholder={tags.length === 0 ? placeholder : ""}
-        className="min-w-[100px] flex-1 bg-transparent text-sm text-slate-900 dark:text-slate-100 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500"
-      />
+      <div className="flex items-center flex-1 min-w-[100px] h-7">
+        <input
+          ref={inputRef}
+          type="text"
+          onKeyDown={handleKeyDown}
+          placeholder={tags.length === 0 ? placeholder : ""}
+          className="w-full bg-transparent text-sm text-slate-900 dark:text-slate-100 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500"
+        />
+      </div>
     </div>
   );
 }

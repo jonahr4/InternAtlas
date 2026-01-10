@@ -1313,7 +1313,7 @@ async function main() {
       console.log(
         `${displayName.padEnd(nameColumnWidth)}${company.platform.padEnd(
           atsColumnWidth
-        )}${status.padEnd(7)}${totalLabel.padEnd(15)}${newLabel.padEnd(15)}${totalClosedLabel.padEnd(15)}${newClosedLabel}`
+        )}${status.padEnd(12)}${totalLabel.padEnd(18)}${newLabel.padEnd(18)}${totalClosedLabel.padEnd(18)}${newClosedLabel}`
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

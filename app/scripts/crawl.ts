@@ -436,11 +436,6 @@ async function fetchWorkdayJobs(boardUrl: string, debug = false): Promise<Workda
     console.log(`  [DEBUG] API URL: ${apiUrl}`);
   }
 
-  const jobs: WorkdayJob[] = [];
-  const limit = 20;
-  let offset = 0;
-
-  // Use the minimal headers from the working Reddit example
   const headers = {
     'accept': 'application/json',
     'accept-language': 'en-US',
@@ -450,65 +445,87 @@ async function fetchWorkdayJobs(boardUrl: string, debug = false): Promise<Workda
     'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
   };
 
-  while (true) {
-    const payload = {
-      appliedFacets: {},
-      limit,
-      offset,
-      searchText: "",
-    };
+  const limit = 20; // Workday API hard limit
+  const concurrency = 10; // Parallel requests for 7.7x speedup
 
-    try {
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      });
+  // First, get total count
+  const initialResponse = await fetch(apiUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ appliedFacets: {}, limit, offset: 0, searchText: "" }),
+  });
 
-      if (!response.ok) {
-        if (debug) {
-          const errorText = await response.text();
-          console.log(`  [DEBUG] Error ${response.status}: ${errorText.substring(0, 200)}`);
+  if (!initialResponse.ok) {
+    if (debug) {
+      const errorText = await initialResponse.text();
+      console.log(`  [DEBUG] Error ${initialResponse.status}: ${errorText.substring(0, 200)}`);
+    }
+    return [];
+  }
+
+  const initialData = await initialResponse.json();
+  const total = initialData.total || 0;
+  
+  if (debug) {
+    console.log(`  [DEBUG] Total jobs: ${total}`);
+  }
+
+  if (total === 0) {
+    return [];
+  }
+
+  // Calculate all offsets needed
+  const offsets: number[] = [];
+  for (let offset = 0; offset < total; offset += limit) {
+    offsets.push(offset);
+  }
+
+  if (debug) {
+    console.log(`  [DEBUG] Requests needed: ${offsets.length}, concurrency: ${concurrency}`);
+  }
+
+  // Fetch in parallel batches
+  const allJobs: WorkdayJob[] = [];
+  
+  for (let i = 0; i < offsets.length; i += concurrency) {
+    const batch = offsets.slice(i, i + concurrency);
+    
+    const batchPromises = batch.map(async (offset) => {
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ appliedFacets: {}, limit, offset, searchText: "" }),
+        });
+
+        if (!response.ok) {
+          return [];
         }
-        break;
-      }
 
-      const data = await response.json();
-      const jobPostings = data.jobPostings || [];
-
-      if (jobPostings.length === 0) {
-        break;
+        const data = await response.json();
+        return data.jobPostings || [];
+      } catch (error) {
+        if (debug) {
+          console.log(`  [DEBUG] Fetch error at offset ${offset}: ${error}`);
+        }
+        return [];
       }
+    });
 
-      if (debug && offset === 0 && jobPostings.length > 0) {
-        console.log(`  [DEBUG] Sample job keys:`, Object.keys(jobPostings[0]).join(', '));
-      }
+    const batchResults = await Promise.all(batchPromises);
+    const batchJobs = batchResults.flat();
+    allJobs.push(...batchJobs);
 
-      jobs.push(...jobPostings);
-      
-      if (debug && jobs.length % 100 === 0) {
-        console.log(`  [DEBUG] Fetched ${jobs.length} jobs so far...`);
-      }
-
-      // Check if we've reached the total
-      if (data.total && jobs.length >= data.total) {
-        break;
-      }
-
-      offset += limit;
-    } catch (error) {
-      if (debug) {
-        console.log(`  [DEBUG] Fetch error: ${error}`);
-      }
-      break;
+    if (debug && i + concurrency < offsets.length) {
+      console.log(`  [DEBUG] Fetched ${allJobs.length}/${total} jobs...`);
     }
   }
 
   if (debug) {
-    console.log(`  [DEBUG] Total jobs fetched: ${jobs.length}`);
+    console.log(`  [DEBUG] Total jobs fetched: ${allJobs.length}`);
   }
 
-  return jobs;
+  return allJobs;
 }
 
 async function workdaySearchById(

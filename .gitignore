@@ -6,3 +6,10 @@ test/jobspy/*
 !test/jobspy/batch_scraper.py
 !test/jobspy/README.md
 !test/jobspy/requirements.txt
+
+
+test/MyGoogleScraper/*
+# But include these essential MyGoogleScraper files
+!test/MyGoogleScraper/
+!test/MyGoogleScraper/google-results-simple-scrape.ts
+!test/MyGoogleScraper/package.json

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Job = {
   id: string;
@@ -109,6 +110,7 @@ function formatDescription(input: string | null): string {
 }
 
 export function JobDetailPanel({ job, onAddToApply, onAddToApplied, onClose, isMobile = false }: JobDetailPanelProps) {
+  const { user } = useAuth();
   const [saveDropdownOpen, setSaveDropdownOpen] = useState(false);
   const [addedToApply, setAddedToApply] = useState(false);
   const [addedToApplied, setAddedToApplied] = useState(false);
@@ -263,25 +265,26 @@ export function JobDetailPanel({ job, onAddToApply, onAddToApplied, onClose, isM
               Apply Now
             </a>
             
-            {/* Save Dropdown */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setSaveDropdownOpen(!saveDropdownOpen)}
-                className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium shadow-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-800 ${
-                  addedToApply || addedToApplied
-                    ? "border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 focus:ring-teal-500"
-                    : "border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 focus:ring-slate-500"
-                }`}
-              >
-                <svg className="h-4 w-4" fill={addedToApply || addedToApplied ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                </svg>
-                Save
-                <svg className={`h-4 w-4 transition-transform ${saveDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
+            {/* Save Dropdown - Only show when logged in */}
+            {user ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setSaveDropdownOpen(!saveDropdownOpen)}
+                  className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium shadow-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-800 ${
+                    addedToApply || addedToApplied
+                      ? "border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 focus:ring-teal-500"
+                      : "border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 focus:ring-slate-500"
+                  }`}
+                >
+                  <svg className="h-4 w-4" fill={addedToApply || addedToApplied ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                  </svg>
+                  Save
+                  <svg className={`h-4 w-4 transition-transform ${saveDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
 
               {/* Dropdown Menu */}
               {saveDropdownOpen && (
@@ -342,6 +345,11 @@ export function JobDetailPanel({ job, onAddToApply, onAddToApplied, onClose, isM
                 </>
               )}
             </div>
+            ) : (
+              <div className="text-center py-2 px-4 text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                Sign in to save jobs
+              </div>
+            )}
           </div>
         </div>
 

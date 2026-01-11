@@ -7,6 +7,8 @@ import Image from "next/image";
 import { JobCard, JobCardSkeleton } from "./JobCard";
 import { JobDetailPanel, JobDetailSkeleton } from "./JobDetailPanel";
 import { TagInput } from "./TagInput";
+import { useAuth } from "@/contexts/AuthContext";
+import { AuthButton } from "./AuthButton";
 
 type Job = {
   id: string;
@@ -150,6 +152,7 @@ function parseSearchParams(searchParams: URLSearchParams): QueryState {
 export default function JobSearch() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
   const initialized = useRef(false);
   const jobListRef = useRef<HTMLDivElement>(null);
   
@@ -689,12 +692,7 @@ export default function JobSearch() {
               )}
             </button>
 
-            <button
-              type="button"
-              className="hidden md:inline-flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-600"
-            >
-              Sign in for more features
-            </button>
+            <AuthButton />
             
             {/* Menu Button */}
             <button
@@ -849,24 +847,26 @@ export default function JobSearch() {
               ))}
             </select>
 
-            {/* Bulk Mode Toggle */}
-            <button
-              type="button"
-              onClick={() => {
-                setBulkMode(!bulkMode);
-                if (bulkMode) setSelectedJobs(new Set());
-              }}
-              className={`hidden md:inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition ${
-                bulkMode
-                  ? "bg-teal-100 dark:bg-teal-900/50 text-teal-700 dark:text-teal-400"
-                  : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
-              }`}
-            >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-              Bulk
-            </button>
+            {/* Bulk Mode Toggle - Only show when logged in */}
+            {user && (
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkMode(!bulkMode);
+                  if (bulkMode) setSelectedJobs(new Set());
+                }}
+                className={`hidden md:inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition ${
+                  bulkMode
+                    ? "bg-teal-100 dark:bg-teal-900/50 text-teal-700 dark:text-teal-400"
+                    : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
+                }`}
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                Bulk Select
+              </button>
+            )}
 
             {activeFiltersCount > 0 && (
             <button

@@ -1,0 +1,8 @@
+test/*
+
+# But include these essential jobspy files
+!test/jobspy/
+test/jobspy/*
+!test/jobspy/batch_scraper.py
+!test/jobspy/README.md
+!test/jobspy/requirements.txt

@@ -1,0 +1,23 @@
+{
+  "name": "workday-improvement",
+  "version": "1.0.0",
+  "description": "Standalone Workday crawler testing environment",
+  "private": true,
+  "scripts": {
+    "test": "tsx test-workday.ts",
+    "test:debug": "tsx test-workday.ts --debug",
+    "experiments": "tsx experiments.ts",
+    "test:parallel": "tsx test-parallel.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.17.1",
+    "@types/jsdom": "^27.0.0",
+    "jsdom": "^27.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "prisma": "^6.17.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5"
+  }
+}

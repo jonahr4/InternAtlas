@@ -13,3 +13,12 @@ test/MyGoogleScraper/*
 !test/MyGoogleScraper/
 !test/MyGoogleScraper/google-results-simple-scrape.ts
 !test/MyGoogleScraper/package.json
+
+
+
+test/WorkdayImprovment/*
+# But include these essential MyGoogleScraper files
+!test/WorkdayImprovment/
+!test/WorkdayImprovment/test-workday.ts
+!test/WorkdayImprovment/package.json
+!test/WorkdayImprovment/FINDINGS.md

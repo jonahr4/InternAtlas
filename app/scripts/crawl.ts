@@ -1160,23 +1160,38 @@ async function main() {
             },
             select: { id: true, externalId: true, jobUrl: true, status: true },
           });
-          for (const closedJob of closedJobs) {
-            const canonical =
-              getWorkdayCanonicalId(closedJob.externalId) ??
-              getWorkdayCanonicalId(closedJob.jobUrl);
-            if (!canonical) {
-              continue;
-            }
-            const found = await workdaySearchById(
-              company.boardUrl,
-              canonical,
-              debugMode
+
+          // Process closed jobs in parallel batches
+          const concurrency = 10;
+          const jobsToReactivate: string[] = [];
+
+          for (let i = 0; i < closedJobs.length; i += concurrency) {
+            const batch = closedJobs.slice(i, i + concurrency);
+            
+            const results = await Promise.all(
+              batch.map(async (closedJob) => {
+                const canonical =
+                  getWorkdayCanonicalId(closedJob.externalId) ??
+                  getWorkdayCanonicalId(closedJob.jobUrl);
+                if (!canonical) {
+                  return null;
+                }
+                const found = await workdaySearchById(
+                  company.boardUrl,
+                  canonical,
+                  debugMode
+                );
+                return found ? closedJob.id : null;
+              })
             );
-            if (!found) {
-              continue;
-            }
+
+            jobsToReactivate.push(...results.filter((id): id is string => id !== null));
+          }
+
+          // Reactivate found jobs
+          for (const jobId of jobsToReactivate) {
             await prisma.job.update({
-              where: { id: closedJob.id },
+              where: { id: jobId },
               data: { status: "ACTIVE", lastSeenAt: new Date() },
             });
             newJobsForCompany += 1;

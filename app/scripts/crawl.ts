@@ -446,7 +446,7 @@ async function fetchWorkdayJobs(boardUrl: string, debug = false): Promise<Workda
   };
 
   const limit = 20; // Workday API hard limit
-  const concurrency = 15; // Optimal parallel requests (tested: 15=fast+safe, 20+=data loss)
+  const concurrency = 10; // Optimal for production (faster than 15 with DB load)
 
   // First, get total count
   const initialResponse = await fetch(apiUrl, {
@@ -881,6 +881,16 @@ async function main() {
     );
     console.log(`Filtering for new companies only: ${supportedCompanies.length} companies`);
   }
+
+  // Sort companies by least recently crawled first (null = never crawled goes first)
+  supportedCompanies.sort((a, b) => {
+    // Never crawled (null) should come first
+    if (!a.firstCrawledAt && !b.firstCrawledAt) return 0;
+    if (!a.firstCrawledAt) return -1;
+    if (!b.firstCrawledAt) return 1;
+    // Otherwise, oldest crawl first
+    return a.firstCrawledAt.getTime() - b.firstCrawledAt.getTime();
+  });
   
   if (atsFilter.length > 0) {
     const allowed = new Set(atsFilter);
@@ -1162,7 +1172,7 @@ async function main() {
           });
 
           // Process closed jobs in parallel batches
-          const concurrency = 15;
+          const concurrency = 10;
           const jobsToReactivate: string[] = [];
 
           for (let i = 0; i < closedJobs.length; i += concurrency) {

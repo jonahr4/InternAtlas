@@ -45,17 +45,17 @@
 After deployed, fix front end with authentication and advanced features
 
 ### Basic (Non-Logged-In) Experience
-- [ ] Add basic view to search table and everything for users without sign in
-- [ ] Display main job board table as it currently exists
-- [ ] Add "Sign in for more features" button in top right corner
-- [ ] Ensure page experience is similar whether logged in or not (main difference is extra features)
-- [ ] Jobs that are deativated are striked out on the job board and there is a button top right that will not display them in job board
+- [x] Add basic view to search table and everything for users without sign in
+- [x] Display main job board table as it currently exists
+- [x] Add "Sign in for more features" button in top right corner
+- [x] Ensure page experience is similar whether logged in or not (main difference is extra features)
+- [x] Jobs that are deativated are striked out on the job board and there is a button top right that will not display them in job board
 
 ### Authentication Setup
-- [ ] Integrate Firebase for user logins
-- [ ] Create sign up flow
-- [ ] Create sign in flow
-- [ ] Add logout functionality
+- [x] Integrate Firebase for user logins
+- [x] Create sign up flow
+- [x] Create sign in flow
+- [x] Add logout functionality
 
 ### Logged-In UI Components
 - [ ] Add 3-line menu button in top right corner when logged in
@@ -124,7 +124,7 @@ After deployed, fix front end with authentication and advanced features
 - [x] Greenhouse adapter (boards-api.greenhouse.io)
 - [x] Lever adapter (api.lever.co)
 - [x] Workday adapter (wday/cxs)
-- [ ] iCIMS adapter (search: `site:icims.com ("jobs/search" OR "careers") ("Software Engineer" OR "Software Developer") "United States"`)
+- [x] iCIMS adapter (search: `site:icims.com ("jobs/search" OR "careers") ("Software Engineer" OR "Software Developer") "United States"`)
 - [ ] SmartRecruiters adapter (search: `site:smartrecruiters.com ("jobs" OR "careers") ("Software Engineer" OR "Software Developer") "United States"`)
 - [ ] Ashby adapter (search: `site:ashbyhq.com/jobs ("Software Engineer" OR "Software Developer") "United States"`)
 

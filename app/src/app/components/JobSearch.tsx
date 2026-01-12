@@ -212,6 +212,7 @@ export default function JobSearch() {
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [showLimitWarning, setShowLimitWarning] = useState<{show: boolean, type: 'title' | 'location' | null}>({show: false, type: null});
+  const [mobileSearchExpanded, setMobileSearchExpanded] = useState(false);
 
   // Initialize dark mode and listen for system preference changes
   useEffect(() => {
@@ -681,7 +682,7 @@ export default function JobSearch() {
   }, [titleTags, locationTags]);
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50 dark:bg-slate-900">
+    <div className="flex h-screen flex-col bg-slate-50 dark:bg-slate-900" style={{ height: '100dvh' }}>
       {/* Header */}
       <header className="flex-none border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
         <div className="flex h-14 md:h-16 items-center justify-between px-4 lg:px-6">
@@ -738,7 +739,24 @@ export default function JobSearch() {
 
         {/* Search Bar */}
         <div className="border-t border-slate-100 dark:border-slate-700 px-4 py-3 lg:px-6">
-          <div className="flex flex-wrap items-start gap-2 md:gap-3">
+          {/* Mobile Search Toggle */}
+          <button
+            type="button"
+            onClick={() => setMobileSearchExpanded(!mobileSearchExpanded)}
+            className="md:hidden flex items-center justify-between w-full mb-3 text-sm font-medium text-slate-700 dark:text-slate-200"
+          >
+            <span>Search Filters</span>
+            <svg 
+              className={`h-5 w-5 transition-transform ${mobileSearchExpanded ? 'rotate-180' : ''}`} 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          <div className={`flex flex-wrap items-start gap-2 md:gap-3 ${mobileSearchExpanded ? '' : 'hidden md:flex'}`}>
             <div className="flex flex-1 flex-wrap md:flex-nowrap items-start gap-2 min-w-0">
               <div className="relative flex-1 md:flex-[2] min-w-[180px]">
                 {showLimitWarning.show && showLimitWarning.type === 'title' && (

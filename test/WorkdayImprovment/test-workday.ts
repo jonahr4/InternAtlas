@@ -387,13 +387,15 @@ function normalizeWorkdayJob(
 async function main() {
   const args = process.argv.slice(2);
   const debug = args.includes("--debug");
-  const concurrency = 10; // Maximum performance (7.7x speedup in testing)
   
-  console.log("🚀 Testing Workday Crawler - Parallel Performance Benchmark");
-  console.log(`⚡ Concurrency: ${concurrency}\n`);
+  // Test multiple concurrency levels to find optimal
+  const concurrencyLevels = [10, 15, 20, 25, 30];
+  
+  console.log("🚀 Testing Workday Crawler - Concurrency Optimization");
+  console.log(`🔬 Testing concurrency levels: ${concurrencyLevels.join(", ")}\n`);
 
   // Target companies for benchmarking
-  const targetCompanies = ["Globalhr", "Jci"];
+  const targetCompanies = ["Globalhr"];
 
   // Fetch these specific Workday companies from the database
   const companies = await prisma.company.findMany({
@@ -418,104 +420,92 @@ async function main() {
   console.log("=" .repeat(80));
   console.log("");
 
-  const results: Array<{
-    name: string;
-    jobs: number;
-    duration: number;
-    msPerJob: number;
-    status: "success" | "error";
-  }> = [];
+  // Test each concurrency level
+  for (const concurrency of concurrencyLevels) {
+    console.log(`\n${"=".repeat(80)}`);
+    console.log(`⚡ TESTING CONCURRENCY = ${concurrency}`);
+    console.log("=".repeat(80));
+    console.log("");
 
-  // Crawl each company
-  for (const company of companies) {
-    const displayName = company.name.length > 48 
-      ? company.name.substring(0, 45) + "..." 
-      : company.name;
-    
-    console.log(`Crawling: ${displayName}`);
-    console.log(`URL: ${company.boardUrl}`);
-    console.log("-".repeat(80));
+    const results: Array<{
+      name: string;
+      jobs: number;
+      duration: number;
+      msPerJob: number;
+      status: "success" | "error";
+      errorCount?: number;
+    }> = [];
 
-    const startTime = Date.now();
-    
-    try {
-      const jobs = await fetchWorkdayJobs(company.boardUrl, debug, concurrency);
-      const endTime = Date.now();
-      const duration = endTime - startTime;
-      const msPerJob = jobs.length > 0 ? Math.round(duration / jobs.length) : 0;
+    // Crawl each company
+    for (const company of companies) {
+      const displayName = company.name.length > 48 
+        ? company.name.substring(0, 45) + "..." 
+        : company.name;
       
-      const normalized = jobs
-        .map((job) => normalizeWorkdayJob(company.name, company.boardUrl, job))
-        .filter((job): job is NormalizedJob => job !== null);
+      console.log(`Crawling: ${displayName}`);
+      console.log(`URL: ${company.boardUrl}`);
+      console.log("-".repeat(80));
+
+      const startTime = Date.now();
       
-      console.log(`✅ Fetched ${jobs.length} jobs in ${(duration / 1000).toFixed(2)}s`);
-      console.log(`   Normalized: ${normalized.length} jobs`);
-      console.log(`   Time per job: ${msPerJob}ms`);
-      console.log("");
-      
-      results.push({
-        name: company.name,
-        jobs: jobs.length,
-        duration,
-        msPerJob,
-        status: "success"
-      });
-      
-    } catch (error) {
-      const endTime = Date.now();
-      const duration = endTime - startTime;
-      const message = error instanceof Error ? error.message : String(error);
-      
-      console.error(`❌ Error: ${message}`);
-      console.error(`   Failed after ${(duration / 1000).toFixed(2)}s`);
-      console.log("");
-      
-      results.push({
-        name: company.name,
-        jobs: 0,
-        duration,
-        msPerJob: 0,
-        status: "error"
-      });
+      try {
+        const jobs = await fetchWorkdayJobs(company.boardUrl, debug, concurrency);
+        const endTime = Date.now();
+        const duration = endTime - startTime;
+        const msPerJob = jobs.length > 0 ? Math.round(duration / jobs.length) : 0;
+        
+        const normalized = jobs
+          .map((job) => normalizeWorkdayJob(company.name, company.boardUrl, job))
+          .filter((job): job is NormalizedJob => job !== null);
+        
+        console.log(`✅ Fetched ${jobs.length} jobs in ${(duration / 1000).toFixed(2)}s`);
+        console.log(`   Normalized: ${normalized.length} jobs`);
+        console.log(`   Time per job: ${msPerJob}ms`);
+        console.log("");
+        
+        results.push({
+          name: company.name,
+          jobs: jobs.length,
+          duration,
+          msPerJob,
+          status: "success"
+        });
+        
+      } catch (error) {
+        const endTime = Date.now();
+        const duration = endTime - startTime;
+        const message = error instanceof Error ? error.message : String(error);
+        
+        console.error(`❌ Error: ${message}`);
+        console.error(`   Failed after ${(duration / 1000).toFixed(2)}s`);
+        console.log("");
+        
+        results.push({
+          name: company.name,
+          jobs: 0,
+          duration,
+          msPerJob: 0,
+          status: "error"
+        });
+      }
     }
+
+    // Summary for this concurrency level
+    const successful = results.filter(r => r.status === "success");
+    const totalJobs = successful.reduce((sum, r) => sum + r.jobs, 0);
+    const totalDuration = successful.reduce((sum, r) => sum + r.duration, 0);
+    const avgMsPerJob = totalJobs > 0 ? Math.round(totalDuration / totalJobs) : 0;
+
+    console.log(`\n📊 Concurrency ${concurrency} Summary:`);
+    console.log(`   Total jobs: ${totalJobs}`);
+    console.log(`   Total time: ${(totalDuration / 1000).toFixed(2)}s`);
+    console.log(`   Avg ms/job: ${avgMsPerJob}ms`);
+    console.log(`   Success rate: ${successful.length}/${results.length}`);
   }
 
-  // Summary Report
-  console.log("=" .repeat(80));
-  console.log("\n📊 BENCHMARK SUMMARY\n");
-  console.log("+----------------------+------------+-------------+---------------+----------+");
-  console.log("| Company              | Jobs       | Time (s)    | ms/job        | Status   |");
-  console.log("+----------------------+------------+-------------+---------------+----------+");
-  
-  const successful = results.filter(r => r.status === "success");
-  const totalJobs = successful.reduce((sum, r) => sum + r.jobs, 0);
-  const totalDuration = successful.reduce((sum, r) => sum + r.duration, 0);
-  const avgMsPerJob = totalJobs > 0 ? Math.round(totalDuration / totalJobs) : 0;
-
-  for (const result of results) {
-    const name = result.name.padEnd(20);
-    const jobs = String(result.jobs).padEnd(10);
-    const time = (result.duration / 1000).toFixed(2).padEnd(11);
-    const msPerJob = result.msPerJob > 0 ? String(result.msPerJob).padEnd(13) : "N/A".padEnd(13);
-    const status = result.status === "success" ? "✓".padEnd(8) : "✗ Error".padEnd(8);
-    
-    console.log(`| ${name} | ${jobs} | ${time} | ${msPerJob} | ${status} |`);
-  }
-  
-  console.log("+----------------------+------------+-------------+---------------+----------+");
-  console.log(`| TOTAL                | ${String(totalJobs).padEnd(10)} | ${(totalDuration / 1000).toFixed(2).padEnd(11)} | ${String(avgMsPerJob).padEnd(13)} |          |`);
-  console.log("+----------------------+------------+-------------+---------------+----------+");
-  
-  console.log(`\n✅ Successfully crawled: ${successful.length}/${results.length} companies`);
-  console.log(`📈 Average time per job: ${avgMsPerJob}ms`);
-  
-  if (successful.length > 0) {
-    const fastest = successful.reduce((min, r) => r.msPerJob < min.msPerJob ? r : min);
-    const slowest = successful.reduce((max, r) => r.msPerJob > max.msPerJob ? r : max);
-    console.log(`⚡ Fastest: ${fastest.name} (${fastest.msPerJob}ms/job)`);
-    console.log(`🐌 Slowest: ${slowest.name} (${slowest.msPerJob}ms/job)`);
-  }
-  
+  console.log(`\n\n${"=".repeat(80)}`);
+  console.log("🏁 ALL TESTS COMPLETE");
+  console.log("=".repeat(80));
   console.log("");
 
   await prisma.$disconnect();

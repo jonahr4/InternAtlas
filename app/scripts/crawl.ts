@@ -446,7 +446,7 @@ async function fetchWorkdayJobs(boardUrl: string, debug = false): Promise<Workda
   };
 
   const limit = 20; // Workday API hard limit
-  const concurrency = 10; // Parallel requests for 7.7x speedup
+  const concurrency = 15; // Optimal parallel requests (tested: 15=fast+safe, 20+=data loss)
 
   // First, get total count
   const initialResponse = await fetch(apiUrl, {
@@ -1162,7 +1162,7 @@ async function main() {
           });
 
           // Process closed jobs in parallel batches
-          const concurrency = 10;
+          const concurrency = 15;
           const jobsToReactivate: string[] = [];
 
           for (let i = 0; i < closedJobs.length; i += concurrency) {

@@ -1,0 +1,24 @@
+test/*
+
+# But include these essential jobspy files
+!test/jobspy/
+test/jobspy/*
+!test/jobspy/batch_scraper.py
+!test/jobspy/README.md
+!test/jobspy/requirements.txt
+
+
+test/MyGoogleScraper/*
+# But include these essential MyGoogleScraper files
+!test/MyGoogleScraper/
+!test/MyGoogleScraper/google-results-simple-scrape.ts
+!test/MyGoogleScraper/package.json
+
+
+
+test/WorkdayImprovment/*
+# But include these essential MyGoogleScraper files
+!test/WorkdayImprovment/
+!test/WorkdayImprovment/test-workday.ts
+!test/WorkdayImprovment/package.json
+!test/WorkdayImprovment/FINDINGS.md

@@ -32,6 +32,7 @@ export async function GET(request: Request) {
   const sortDir = searchParams.get("sortDir")?.trim().toLowerCase();
   const companyName = searchParams.get("companyName")?.trim();
   const status = searchParams.get("status")?.trim();
+  const platforms = searchParams.get("platforms")?.trim();
 
   const page = Math.max(1, Number.parseInt(searchParams.get("page") ?? "1", 10));
   const pageSize = Math.min(
@@ -114,6 +115,13 @@ export async function GET(request: Request) {
 
   if (status) {
     and.push({ status });
+  }
+
+  if (platforms) {
+    const platformList = platforms.split(',').map(p => p.trim()).filter(Boolean);
+    if (platformList.length > 0) {
+      and.push({ sourcePlatform: { in: platformList } });
+    }
   }
 
   const direction = sortDir === "asc" ? "asc" : "desc";

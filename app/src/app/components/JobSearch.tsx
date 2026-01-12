@@ -7,6 +7,8 @@ import Image from "next/image";
 import { JobCard, JobCardSkeleton } from "./JobCard";
 import { JobDetailPanel, JobDetailSkeleton } from "./JobDetailPanel";
 import { TagInput } from "./TagInput";
+import { useAuth } from "@/contexts/AuthContext";
+import { AuthButton } from "./AuthButton";
 
 type Job = {
   id: string;
@@ -51,6 +53,13 @@ const SORT_OPTIONS: SortOption[] = [
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 const DEFAULT_PAGE_SIZE = 25;
 
+const ATS_PLATFORMS = [
+  { value: "GREENHOUSE", label: "Greenhouse" },
+  { value: "LEVER", label: "Lever" },
+  { value: "WORKDAY", label: "Workday" },
+  { value: "ICIMS", label: "iCIMS" },
+] as const;
+
 type QueryState = {
   titleTags: string[];
   companyFilter: string;
@@ -59,6 +68,7 @@ type QueryState = {
   sortOption: SortOption;
   page: number;
   pageSize: number;
+  selectedPlatforms: string[];
 };
 
 const DEFAULT_STATE: QueryState = {
@@ -69,6 +79,7 @@ const DEFAULT_STATE: QueryState = {
   sortOption: SORT_OPTIONS[0],
   page: 1,
   pageSize: DEFAULT_PAGE_SIZE,
+  selectedPlatforms: ATS_PLATFORMS.map(p => p.value),
 };
 
 function buildSearchParams(state: QueryState, titleTag?: string, locationTag?: string) {
@@ -99,6 +110,10 @@ function buildSearchParams(state: QueryState, titleTag?: string, locationTag?: s
   params.set("pageSize", String(state.pageSize));
   params.set("sort", state.sortOption.sort);
   params.set("sortDir", state.sortOption.sortDir);
+  
+  if (state.selectedPlatforms.length > 0 && state.selectedPlatforms.length < ATS_PLATFORMS.length) {
+    params.set("platforms", state.selectedPlatforms.join(","));
+  }
 
   return params;
 }
@@ -136,6 +151,11 @@ function parseSearchParams(searchParams: URLSearchParams): QueryState {
     statusFilter = "both";
   }
 
+  const platformsParam = searchParams.get("platforms") ?? "";
+  const selectedPlatforms = platformsParam 
+    ? platformsParam.split(",").filter(p => ATS_PLATFORMS.some(ats => ats.value === p))
+    : ATS_PLATFORMS.map(p => p.value);
+
   return {
     titleTags,
     companyFilter,
@@ -144,12 +164,14 @@ function parseSearchParams(searchParams: URLSearchParams): QueryState {
     sortOption,
     page,
     pageSize,
+    selectedPlatforms,
   };
 }
 
 export default function JobSearch() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
   const initialized = useRef(false);
   const jobListRef = useRef<HTMLDivElement>(null);
   
@@ -168,6 +190,8 @@ export default function JobSearch() {
   const [sortOption, setSortOption] = useState(DEFAULT_STATE.sortOption);
   const [page, setPage] = useState(DEFAULT_STATE.page);
   const [pageSize, setPageSize] = useState(DEFAULT_STATE.pageSize);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(DEFAULT_STATE.selectedPlatforms);
+  const [platformsDropdownOpen, setPlatformsDropdownOpen] = useState(false);
 
   const [data, setData] = useState<ApiResponse>({
     items: [],
@@ -233,6 +257,7 @@ export default function JobSearch() {
     setSortOption(parsed.sortOption);
     setPage(parsed.page);
     setPageSize(parsed.pageSize);
+    setSelectedPlatforms(parsed.selectedPlatforms);
     fetchJobs(parsed.page, { overrideState: parsed, skipUrlUpdate: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -321,12 +346,13 @@ export default function JobSearch() {
       statusFilter,
       sortOption,
       pageSize,
+      selectedPlatforms,
       ...(options.overrideState ?? {}),
       page: nextPage,
     };
 
     // Build cache key
-    const cacheKey = `${nextState.titleTags.join(',')}_${nextState.companyFilter}_${nextState.locationTags.join(',')}_${nextState.statusFilter}_${nextState.sortOption.sort}_${nextState.sortOption.sortDir}_${nextPage}_${nextState.pageSize}`;
+    const cacheKey = `${nextState.titleTags.join(',')}_${nextState.companyFilter}_${nextState.locationTags.join(',')}_${nextState.statusFilter}_${nextState.sortOption.sort}_${nextState.sortOption.sortDir}_${nextPage}_${nextState.pageSize}_${nextState.selectedPlatforms.join(',')}`;
     
     // Check cache first
     const cached = cacheRef.current.get(cacheKey);
@@ -341,6 +367,7 @@ export default function JobSearch() {
       setLocationTags(nextState.locationTags);
       setStatusFilter(nextState.statusFilter);
       setSortOption(nextState.sortOption);
+      setSelectedPlatforms(nextState.selectedPlatforms);
       
       if (!options.skipUrlUpdate) {
         const urlParams = buildSearchParams(nextState);
@@ -393,6 +420,10 @@ export default function JobSearch() {
       params.set("pageSize", String(nextState.pageSize));
       params.set("sort", nextState.sortOption.sort);
       params.set("sortDir", nextState.sortOption.sortDir);
+      
+      if (nextState.selectedPlatforms.length > 0 && nextState.selectedPlatforms.length < ATS_PLATFORMS.length) {
+        params.set("platforms", nextState.selectedPlatforms.join(","));
+      }
 
       // Single API call instead of cartesian product
       const res = await fetch(`/api/jobs?${params.toString()}`);
@@ -420,6 +451,7 @@ export default function JobSearch() {
       setLocationTags(nextState.locationTags);
       setStatusFilter(nextState.statusFilter);
       setSortOption(nextState.sortOption);
+      setSelectedPlatforms(nextState.selectedPlatforms);
       
       if (result.items.length > 0 && !selectedJob) {
         setSelectedJob(result.items[0]);
@@ -689,12 +721,7 @@ export default function JobSearch() {
               )}
             </button>
 
-            <button
-              type="button"
-              className="hidden md:inline-flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-600"
-            >
-              Sign in for more features
-            </button>
+            <AuthButton />
             
             {/* Menu Button */}
             <button
@@ -816,6 +843,72 @@ export default function JobSearch() {
             
             <div className="h-5 w-px bg-slate-200 dark:bg-slate-600" />
             
+            {/* ATS Multi-Select Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setPlatformsDropdownOpen(!platformsDropdownOpen)}
+                className="h-8 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 pr-8 text-sm text-slate-600 dark:text-slate-300 outline-none transition hover:bg-slate-50 dark:hover:bg-slate-600 focus:border-teal-300 focus:ring-2 focus:ring-teal-100 dark:focus:ring-teal-900 flex items-center gap-2"
+              >
+                <span>Select ATS</span>
+                {selectedPlatforms.length < ATS_PLATFORMS.length && (
+                  <span className="inline-flex items-center justify-center h-4 min-w-4 px-1 text-xs font-medium rounded-full bg-teal-100 dark:bg-teal-900/50 text-teal-700 dark:text-teal-400">
+                    {selectedPlatforms.length}
+                  </span>
+                )}
+              </button>
+              <svg className="absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 pointer-events-none text-slate-600 dark:text-slate-300 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+              
+              {platformsDropdownOpen && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setPlatformsDropdownOpen(false)}
+                  />
+                  <div className="absolute left-0 top-full mt-1 z-20 w-48 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 py-1 shadow-lg">
+                    {ATS_PLATFORMS.map((platform) => {
+                      const isSelected = selectedPlatforms.includes(platform.value);
+                      return (
+                        <button
+                          key={platform.value}
+                          type="button"
+                          onClick={() => {
+                            const newPlatforms = isSelected
+                              ? selectedPlatforms.filter(p => p !== platform.value)
+                              : [...selectedPlatforms, platform.value];
+                            
+                            // Prevent deselecting all
+                            if (newPlatforms.length === 0) return;
+                            
+                            setSelectedPlatforms(newPlatforms);
+                            fetchJobs(1, { overrideState: { selectedPlatforms: newPlatforms } });
+                          }}
+                          className="flex w-full items-center gap-3 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 transition hover:bg-slate-50 dark:hover:bg-slate-600"
+                        >
+                          <div className={`flex h-4 w-4 items-center justify-center rounded border ${
+                            isSelected
+                              ? "border-teal-500 bg-teal-500"
+                              : "border-slate-300 dark:border-slate-500 bg-white dark:bg-slate-600"
+                          }`}>
+                            {isSelected && (
+                              <svg className="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+                          <span>{platform.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+            
+            <div className="h-5 w-px bg-slate-200 dark:bg-slate-600" />
+            
             <select
               className="h-8 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-2 text-sm text-slate-600 dark:text-slate-300 outline-none transition focus:border-teal-300 focus:ring-2 focus:ring-teal-100 dark:focus:ring-teal-900"
               value={sortOption.label}
@@ -849,24 +942,26 @@ export default function JobSearch() {
               ))}
             </select>
 
-            {/* Bulk Mode Toggle */}
-            <button
-              type="button"
-              onClick={() => {
-                setBulkMode(!bulkMode);
-                if (bulkMode) setSelectedJobs(new Set());
-              }}
-              className={`hidden md:inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition ${
-                bulkMode
-                  ? "bg-teal-100 dark:bg-teal-900/50 text-teal-700 dark:text-teal-400"
-                  : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
-              }`}
-            >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-              Bulk
-            </button>
+            {/* Bulk Mode Toggle - Only show when logged in */}
+            {user && (
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkMode(!bulkMode);
+                  if (bulkMode) setSelectedJobs(new Set());
+                }}
+                className={`hidden md:inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition ${
+                  bulkMode
+                    ? "bg-teal-100 dark:bg-teal-900/50 text-teal-700 dark:text-teal-400"
+                    : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
+                }`}
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                Bulk Select
+              </button>
+            )}
 
             {activeFiltersCount > 0 && (
             <button

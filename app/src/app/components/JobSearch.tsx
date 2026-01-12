@@ -212,6 +212,7 @@ export default function JobSearch() {
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [showLimitWarning, setShowLimitWarning] = useState<{show: boolean, type: 'title' | 'location' | null}>({show: false, type: null});
+  const [mobileSearchExpanded, setMobileSearchExpanded] = useState(false);
 
   // Initialize dark mode and listen for system preference changes
   useEffect(() => {
@@ -681,7 +682,7 @@ export default function JobSearch() {
   }, [titleTags, locationTags]);
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50 dark:bg-slate-900">
+    <div className="flex h-screen flex-col bg-slate-50 dark:bg-slate-900" style={{ height: '100dvh' }}>
       {/* Header */}
       <header className="flex-none border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
         <div className="flex h-14 md:h-16 items-center justify-between px-4 lg:px-6">
@@ -699,6 +700,17 @@ export default function JobSearch() {
 
           {/* Right Side Actions */}
           <div className="flex items-center gap-2 md:gap-3">
+            {/* Learn More Link */}
+            <a
+              href="/about"
+              className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800 rounded-lg hover:bg-teal-100 dark:hover:bg-teal-900/40 transition"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Why InternAtlas?
+            </a>
+            
             <span className="hidden sm:inline text-xs md:text-sm text-slate-500 dark:text-slate-400">
               Updated {formatRelativeTime(lastUpdatedAt)}
             </span>
@@ -738,7 +750,24 @@ export default function JobSearch() {
 
         {/* Search Bar */}
         <div className="border-t border-slate-100 dark:border-slate-700 px-4 py-3 lg:px-6">
-          <div className="flex flex-wrap items-start gap-2 md:gap-3">
+          {/* Mobile Search Toggle */}
+          <button
+            type="button"
+            onClick={() => setMobileSearchExpanded(!mobileSearchExpanded)}
+            className="md:hidden flex items-center justify-between w-full mb-3 text-sm font-medium text-slate-700 dark:text-slate-200"
+          >
+            <span>Search Filters</span>
+            <svg 
+              className={`h-5 w-5 transition-transform ${mobileSearchExpanded ? 'rotate-180' : ''}`} 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          <div className={`flex flex-wrap items-start gap-2 md:gap-3 ${mobileSearchExpanded ? '' : 'hidden md:flex'}`}>
             <div className="flex flex-1 flex-wrap md:flex-nowrap items-start gap-2 min-w-0">
               <div className="relative flex-1 md:flex-[2] min-w-[180px]">
                 {showLimitWarning.show && showLimitWarning.type === 'title' && (
@@ -1241,6 +1270,60 @@ export default function JobSearch() {
 
                 {/* Navigation Links */}
                 <nav className="px-4 space-y-1">
+                  <a
+                    href="/about"
+                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 dark:hover:bg-slate-700"
+                  >
+                    <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="font-medium">Why InternAtlas?</span>
+                  </a>
+                  
+                  {user ? (
+                    <>
+                      <a
+                        href="/custom-tables"
+                        className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 dark:hover:bg-slate-700"
+                      >
+                        <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        <span className="font-medium">Custom Tables</span>
+                      </a>
+                      <a
+                        href="/tracking"
+                        className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 dark:hover:bg-slate-700"
+                      >
+                        <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                        </svg>
+                        <span className="font-medium">Application Tracking</span>
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60">
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        <div className="flex flex-col">
+                          <span className="font-medium">Custom Tables</span>
+                          <span className="text-xs">Sign in to use</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60">
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                        </svg>
+                        <div className="flex flex-col">
+                          <span className="font-medium">Application Tracking</span>
+                          <span className="text-xs">Sign in to use</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  
                   <a
                     href="/admin"
                     className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 dark:hover:bg-slate-700"

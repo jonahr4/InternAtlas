@@ -13,16 +13,25 @@ const ATS_SITES = [
 ];
 
 // Job search terms (will run separate search for each)
+// const JOB_TERMS = [
+//   'Software Engineer Intern',
+//   'Software Developer Intern',
+//   'Backend Engineer Intern',
+//   'Frontend Engineer Intern',
+//   'Full Stack Engineer Intern',
+//   'Software Engineering Intern',
+//   'SWE Intern',
+//   'New Grad',
+// ];
 const JOB_TERMS = [
-  'Software Engineer Intern',
-  'Software Developer Intern',
-  'Backend Engineer Intern',
-  'Frontend Engineer Intern',
-  'Full Stack Engineer Intern',
-  'Software Engineering Intern',
-  'SWE Intern',
-  'New Grad',
+  'Legal Intern',
+  'Paralegal Intern',
+  'Media Intern',
+  'Communications Intern',
+  'Marketing Intern',
+  'Public Relations Intern',
 ];
+
 
 // Locations to keep query simple (OR logic within each search)
 const LOCATION_QUERY = 'Remote';

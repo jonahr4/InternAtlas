@@ -168,12 +168,20 @@ export default function CustomTablesPage() {
         params.set("sortDir", sortOption.sortDir);
         params.set("page", String(page));
         params.set("pageSize", String(pageSize));
+        
+        // Skip count on subsequent pages for faster loading
+        if (page > 1 && totalJobs > 0) {
+          params.set("skipCount", "true");
+        }
 
         const response = await fetch(`/api/jobs?${params.toString()}`);
         const data = await response.json();
         
         setJobs(data.items || []);
-        setTotalJobs(data.total || 0);
+        // Only update total if we got a valid count (not -1)
+        if (data.total !== -1) {
+          setTotalJobs(data.total || 0);
+        }
         
         // Update new job count - only on first page load
         if (page === 1) {

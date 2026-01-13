@@ -24,6 +24,7 @@ type JobCardProps = {
   isChecked?: boolean;
   onCheck?: (checked: boolean) => void;
   index?: number;
+  showNewBadge?: boolean; // Override default NEW badge logic
 };
 
 function formatDate(dateString: string): string {
@@ -78,10 +79,12 @@ export function JobCard({
   bulkMode = false, 
   isChecked = false, 
   onCheck,
-  index = 0 
+  index = 0,
+  showNewBadge
 }: JobCardProps) {
   const isClosed = job.status === "CLOSED";
-  const isNew = isNewJob(job.createdAt);
+  // Use showNewBadge prop if provided, otherwise fall back to default logic
+  const isNew = showNewBadge !== undefined ? showNewBadge : isNewJob(job.createdAt);
   const remote = isRemote(job.location);
   const jobType = getJobType(job.title);
 
@@ -103,7 +106,7 @@ export function JobCard({
     >
       {/* NEW Badge */}
       {isNew && !isClosed && (
-        <div className="absolute -top-1 right-3 z-10">
+        <div className="absolute top-2 right-3 z-10">
           <span className="new-badge-pulse inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
             <svg className="h-2.5 w-2.5" fill="currentColor" viewBox="0 0 20 20">
               <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />

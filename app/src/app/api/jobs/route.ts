@@ -114,7 +114,16 @@ export async function GET(request: Request) {
   }
 
   if (status) {
-    and.push({ status });
+    // Map URL status values to Prisma enum values
+    const statusMap: Record<string, string> = {
+      'open': 'ACTIVE',
+      'closed': 'CLOSED',
+      'both': undefined as any, // Don't filter by status
+    };
+    const mappedStatus = statusMap[status.toLowerCase()];
+    if (mappedStatus) {
+      and.push({ status: mappedStatus });
+    }
   }
 
   if (platforms) {

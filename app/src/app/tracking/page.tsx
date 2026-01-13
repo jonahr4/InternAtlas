@@ -2,49 +2,55 @@
 
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
+import { TopNav } from "../components/TopNav";
 
 export default function TrackingPage() {
   const { user } = useAuth();
 
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-900 px-6">
-        <div className="max-w-md text-center">
-          <div className="mb-6 flex justify-center">
-            <div className="rounded-full bg-teal-100 dark:bg-teal-900/30 p-4">
-              <svg className="h-12 w-12 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-              </svg>
+      <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-900">
+        <TopNav />
+        <div className="flex flex-1 items-center justify-center px-6">
+          <div className="max-w-md text-center">
+            <div className="mb-6 flex justify-center">
+              <div className="rounded-full bg-teal-100 dark:bg-teal-900/30 p-4">
+                <svg className="h-12 w-12 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+              </div>
             </div>
+            <h1 className="mb-3 text-2xl font-bold text-slate-900 dark:text-white">
+              Application Tracking
+            </h1>
+            <p className="mb-6 text-slate-600 dark:text-slate-400">
+              Sign in to track jobs you want to apply to and jobs you've already applied to.
+            </p>
+            <Link
+              href="/"
+              className="inline-block rounded-lg bg-teal-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-teal-700"
+            >
+              Sign In to Continue
+            </Link>
           </div>
-          <h1 className="mb-3 text-2xl font-bold text-slate-900 dark:text-white">
-            Application Tracking
-          </h1>
-          <p className="mb-6 text-slate-600 dark:text-slate-400">
-            Sign in to track jobs you want to apply to and jobs you've already applied to.
-          </p>
-          <Link
-            href="/"
-            className="inline-block rounded-lg bg-teal-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-teal-700"
-          >
-            Sign In to Continue
-          </Link>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 px-6 py-16">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
-            Application Tracking
-          </h1>
-          <p className="text-slate-600 dark:text-slate-400">
-            Keep track of jobs you want to apply to and applications you've submitted.
-          </p>
-        </div>
+    <div className="flex flex-col min-h-screen bg-slate-50 dark:bg-slate-900">
+      <TopNav />
+      <div className="px-6 py-16">
+        <div className="mx-auto max-w-5xl">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
+              Application Tracking
+            </h1>
+            <p className="text-slate-600 dark:text-slate-400">
+              Keep track of jobs you want to apply to and applications you've submitted.
+            </p>
+          </div>
 
         {/* To Apply Table */}
         <div className="mb-8">
@@ -95,6 +101,7 @@ export default function TrackingPage() {
             </p>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

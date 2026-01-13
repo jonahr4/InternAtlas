@@ -71,6 +71,21 @@ model Job {
   updatedAt        DateTime       @updatedAt
 
   @@index([companyId])
+  @@index([status])
+  @@index([postedAt])
+  @@index([lastSeenAt])
+  @@index([createdAt])
+  @@index([employmentType])
+  @@index([locationType])
+  @@index([sourcePlatform])
+  @@index([title])
+  @@index([location])
+  // Composite indexes for common filter + sort combinations
+  @@index([status, postedAt])
+  @@index([status, lastSeenAt])
+  @@index([status, createdAt])
+  @@index([employmentType, postedAt])
+  @@index([companyId, postedAt])
   @@unique([sourcePlatform, externalId])
   @@unique([dedupeKey])
 }

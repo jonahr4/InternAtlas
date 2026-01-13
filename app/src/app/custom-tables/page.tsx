@@ -175,26 +175,26 @@ export default function CustomTablesPage() {
         setJobs(data.items || []);
         setTotalJobs(data.total || 0);
         
-        // Update new job count based on ALL jobs, not just current page
+        // Update new job count - only on first page load
         if (page === 1) {
-          // Fetch all jobs to count accurately (use large page size)
-          const countParams = new URLSearchParams(params);
-          countParams.set("pageSize", "10000"); // Fetch up to 10k jobs for counting
-          countParams.set("page", "1");
-          
-          const countResponse = await fetch(`/api/jobs?${countParams.toString()}`);
-          const countData = await countResponse.json();
-          
           let newCount = 0;
+          
           if (!selectedTable.lastSeenAt) {
-            // If never seen, all jobs are NEW (use total count from API)
-            newCount = countData.total || countData.items.length;
+            // If never seen, use the total count directly (all jobs are NEW)
+            newCount = data.total || 0;
           } else {
-            // Count jobs posted after last seen
+            // Count NEW jobs from current results only (don't fetch all jobs)
             const lastSeen = new Date(selectedTable.lastSeenAt);
-            newCount = countData.items.filter((job: Job) => 
+            newCount = data.items.filter((job: Job) => 
               new Date(job.createdAt) > lastSeen
             ).length;
+            
+            // If we're on page 1 and have full results, estimate total NEW count
+            // This is approximate but avoids fetching thousands of jobs
+            if (data.items.length === pageSize && data.total > pageSize) {
+              const percentNew = newCount / data.items.length;
+              newCount = Math.round(data.total * percentNew);
+            }
           }
           
           if (newCount !== selectedTable.newJobCount) {

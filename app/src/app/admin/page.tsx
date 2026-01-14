@@ -274,6 +274,7 @@ export default function AdminPage() {
               <option value="LEVER">Lever</option>
               <option value="WORKDAY">Workday</option>
               <option value="ICIMS">iCIMS</option>
+              <option value="SMARTRECRUITERS">SmartRecruiters</option>
               <option value="CUSTOM">Custom (to be implemented)</option>
             </select>
           </label>
@@ -338,6 +339,15 @@ export default function AdminPage() {
                   </div>
                   <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
                     {`site:icims.com ${location} intext:"apply" (intext:"${roleA}" OR intext:"${roleB}")`}
+                  </div>
+                </>
+              ) : ats === "SMARTRECRUITERS" ? (
+                <>
+                  <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
+                    {`site:jobs.smartrecruiters.com ${location} intext:"apply" (intext:"${roleA}" OR intext:"${roleB}")`}
+                  </div>
+                  <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
+                    {`site:jobs.smartrecruiters.com "${roleB}" ${location}`}
                   </div>
                 </>
               ) : (

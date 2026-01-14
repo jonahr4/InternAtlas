@@ -45,10 +45,50 @@ type IcimsJob = {
   description: string | null;
 };
 
+type SmartRecruitersJob = {
+  id: string;
+  name: string;
+  location: {
+    city?: string;
+    region?: string;
+    country?: string;
+  };
+  typeOfEmployment?: string;
+  company: {
+    identifier?: string;
+    name: string;
+  };
+  actions?: {
+    apply?: string;
+  };
+  postingUrl?: string;
+  applyUrl?: string;
+  jobAd?: {
+    sections?: {
+      companyDescription?: {
+        title?: string;
+        text?: string;
+      };
+      jobDescription?: {
+        title?: string;
+        text?: string;
+      };
+      qualifications?: {
+        title?: string;
+        text?: string;
+      };
+      additionalInformation?: {
+        title?: string;
+        text?: string;
+      };
+    };
+  };
+};
+
 type Company = {
   id: string;
   name: string;
-  platform: "GREENHOUSE" | "LEVER" | "WORKDAY" | "ICIMS" | "CUSTOM";
+  platform: "GREENHOUSE" | "LEVER" | "WORKDAY" | "ICIMS" | "SMARTRECRUITERS" | "CUSTOM";
   boardUrl: string;
   firstCrawledAt: Date | null;
 };
@@ -787,6 +827,120 @@ function normalizeIcimsJob(companyName: string, job: IcimsJob): NormalizedJob | 
   };
 }
 
+function getSmartRecruitersSlug(boardUrl: string): string {
+  try {
+    const url = new URL(boardUrl);
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (parts.length === 0) {
+      throw new Error(`Invalid SmartRecruiters board URL (no slug in path): ${boardUrl}`);
+    }
+    return parts[0];
+  } catch (error) {
+    throw new Error(`Invalid SmartRecruiters board URL: ${boardUrl}. Error: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function fetchSmartRecruitersJobs(boardUrl: string, debug = false): Promise<SmartRecruitersJob[]> {
+  const slug = getSmartRecruitersSlug(boardUrl);
+  const apiUrl = `https://api.smartrecruiters.com/v1/companies/${slug}/postings`;
+  const limit = 100;
+  const concurrency = 10; // Parallel batch size
+
+  // First fetch to get total count
+  const initialUrl = `${apiUrl}?limit=${limit}&offset=0`;
+  const initialRes = await fetch(initialUrl, {
+    headers: {
+      "Accept": "application/json",
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    },
+  });
+
+  if (!initialRes.ok) {
+    throw new Error(`Failed to fetch ${initialUrl}: ${initialRes.status}`);
+  }
+
+  const initialData = (await initialRes.json()) as { content: SmartRecruitersJob[]; totalFound: number };
+  const allJobs: SmartRecruitersJob[] = [...initialData.content];
+  const totalFound = initialData.totalFound;
+
+  if (debug) {
+    console.log(`  [DEBUG] SmartRecruiters total jobs: ${totalFound}`);
+  }
+
+  // If all jobs fetched in first request, return early
+  if (allJobs.length >= totalFound) {
+    return allJobs;
+  }
+
+  // Calculate remaining offsets to fetch
+  const offsets: number[] = [];
+  for (let offset = limit; offset < totalFound; offset += limit) {
+    offsets.push(offset);
+  }
+
+  // Fetch remaining pages in parallel batches
+  for (let i = 0; i < offsets.length; i += concurrency) {
+    const batch = offsets.slice(i, i + concurrency);
+    
+    const batchPromises = batch.map(async (offset) => {
+      const url = `${apiUrl}?limit=${limit}&offset=${offset}`;
+      const res = await fetch(url, {
+        headers: {
+          "Accept": "application/json",
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        },
+      });
+
+      if (!res.ok) {
+        if (debug) {
+          console.log(`  [DEBUG] SmartRecruiters fetch failed ${res.status} for offset ${offset}`);
+        }
+        return [];
+      }
+
+      const data = (await res.json()) as { content: SmartRecruitersJob[] };
+      return data.content || [];
+    });
+
+    const batchResults = await Promise.all(batchPromises);
+    const batchJobs = batchResults.flat();
+    allJobs.push(...batchJobs);
+
+    if (debug) {
+      console.log(`  [DEBUG] SmartRecruiters fetched batch: ${batchJobs.length} jobs (total: ${allJobs.length}/${totalFound})`);
+    }
+  }
+
+  return allJobs;
+}
+
+function normalizeSmartRecruitersJob(
+  companyName: string,
+  job: SmartRecruitersJob
+): NormalizedJob {
+  const locationParts = [
+    job.location?.city,
+    job.location?.region,
+    job.location?.country,
+  ].filter(Boolean);
+  
+  const location = locationParts.length > 0 ? locationParts.join(", ") : null;
+  
+  // Use the company identifier from the job, or fall back to constructing URL
+  const companySlug = job.company?.identifier || job.company?.name || '';
+  const jobUrl = job.postingUrl || job.applyUrl || `https://jobs.smartrecruiters.com/${companySlug}/${job.id}`;
+  
+  return {
+    companyName,
+    externalId: job.id,
+    title: job.name,
+    location,
+    postedAt: null,
+    jobUrl,
+    descriptionText: null,
+  };
+}
+
 function getSupportedCompanies(companies: Company[]): Company[] {
   return companies.filter(
     (company) =>
@@ -794,6 +948,7 @@ function getSupportedCompanies(companies: Company[]): Company[] {
       company.platform === "LEVER" ||
       company.platform === "WORKDAY" ||
       company.platform === "ICIMS" ||
+      company.platform === "SMARTRECRUITERS" ||
       (company.platform === "CUSTOM" &&
         company.boardUrl.toLowerCase().includes("icims.com"))
   );
@@ -985,6 +1140,9 @@ async function main() {
         normalized = jobs
           .map((job) => normalizeIcimsJob(company.name, job))
           .filter((job): job is NormalizedJob => Boolean(job && job.jobUrl));
+      } else if (effectivePlatform === "SMARTRECRUITERS") {
+        const jobs = await fetchSmartRecruitersJobs(company.boardUrl, debugMode);
+        normalized = jobs.map((job) => normalizeSmartRecruitersJob(company.name, job));
       } else {
         console.log(`${company.name}: unsupported ATS (${company.platform})`);
         continue;
@@ -1359,8 +1517,12 @@ async function main() {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : '';
       totalBroken += 1;
       console.error(`${company.name}: error - ${message}`);
+      if (debugMode && stack) {
+        console.error(`  Stack: ${stack}`);
+      }
     }
   }
 

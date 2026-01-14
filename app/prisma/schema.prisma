@@ -26,6 +26,7 @@ enum SourcePlatform {
   LEVER
   WORKDAY
   ICIMS
+  SMARTRECRUITERS
   CUSTOM
 }
 

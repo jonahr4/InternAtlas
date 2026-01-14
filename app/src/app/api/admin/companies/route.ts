@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 type RequestBody = {
   urls?: string;
   method?: "google" | "html";
-  ats?: "GREENHOUSE" | "LEVER" | "WORKDAY" | "ICIMS" | "CUSTOM";
+  ats?: "GREENHOUSE" | "LEVER" | "WORKDAY" | "ICIMS" | "SMARTRECRUITERS" | "CUSTOM";
 };
 
 function extractGreenhouseSlugs(input: string): string[] {
@@ -245,6 +245,46 @@ function extractIcimsBoards(input: string): { name: string; boardUrl: string }[]
   }));
 }
 
+function extractSmartRecruitersBoards(input: string): { name: string; boardUrl: string }[] {
+  const normalizedInput = input.replace(/&amp;/g, "&");
+  const urlMatches = normalizedInput.match(/https?:\/\/[^\s]+/g) ?? [];
+  const boards = new Map<string, string>();
+
+  for (const rawUrl of urlMatches) {
+    try {
+      const cleanUrl = rawUrl
+        .split('"')[0]
+        .split("'")[0]
+        .split(">")[0]
+        .split("&sa=")[0]
+        .split("?utm")[0]
+        .split("&ved=")[0]
+        .split("#")[0];
+      const url = new URL(cleanUrl);
+      if (!url.hostname.endsWith("smartrecruiters.com")) {
+        continue;
+      }
+      // Job URLs are like: https://jobs.smartrecruiters.com/Wabtec/3743990010858726-apprentice
+      // Company pages are like: https://careers.smartrecruiters.com/Wabtec
+      if (url.hostname === "jobs.smartrecruiters.com") {
+        const parts = url.pathname.split("/").filter(Boolean);
+        if (parts.length >= 1) {
+          const companySlug = parts[0];
+          const boardUrl = `https://careers.smartrecruiters.com/${companySlug}`;
+          boards.set(companySlug, boardUrl);
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return Array.from(boards.entries()).map(([name, boardUrl]) => ({
+    name: nameFromSlug(name),
+    boardUrl,
+  }));
+}
+
 function nameFromSlug(slug: string): string {
   return slug
     .replace(/[-_]+/g, " ")
@@ -274,6 +314,7 @@ export async function POST(request: Request) {
     ats === "LEVER" ? extractLeverSlugs(input) : ats === "GREENHOUSE" ? extractGreenhouseSlugs(input) : [];
   const workdayBoards = ats === "WORKDAY" ? extractWorkdayBoards(input) : [];
   const icimsBoards = ats === "ICIMS" ? extractIcimsBoards(input) : [];
+  const smartRecruitersBoards = ats === "SMARTRECRUITERS" ? extractSmartRecruitersBoards(input) : [];
   let added = 0;
   let updated = 0;
   let skipped = 0;
@@ -285,6 +326,8 @@ export async function POST(request: Request) {
       ? workdayBoards
       : ats === "ICIMS"
       ? icimsBoards
+      : ats === "SMARTRECRUITERS"
+      ? smartRecruitersBoards
       : slugs.map((slug) => ({
           name: nameFromSlug(slug),
           boardUrl:

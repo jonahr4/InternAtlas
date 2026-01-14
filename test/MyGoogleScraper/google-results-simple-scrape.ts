@@ -9,7 +9,8 @@ const ATS_SITES = [
   'jobs.lever.co',
   'myworkdayjobs.com',
   'icims.com',
-  'boards.greenhouse.io'
+  'boards.greenhouse.io',
+  'jobs.smartrecruiters.com'
 ];
 
 // Job search terms (will run separate search for each)
@@ -24,17 +25,15 @@ const ATS_SITES = [
 //   'New Grad',
 // ];
 const JOB_TERMS = [
-  'Legal Intern',
-  'Paralegal Intern',
-  'Media Intern',
-  'Communications Intern',
-  'Marketing Intern',
-  'Public Relations Intern',
+  'Software Engineering',
+  'Social Media',
+  'Product Manager',
+  'Multimedia',
 ];
 
 
 // Locations to keep query simple (OR logic within each search)
-const LOCATION_QUERY = 'Remote';
+const LOCATION_QUERY = 'New York OR NYC OR "New York City"';
 
 const DELAY_BETWEEN_PAGES = 4000; // 4 seconds between page loads (increased)
 const DELAY_BETWEEN_SEARCHES = 8000; // 8 seconds between different searches (increased)
@@ -80,10 +79,16 @@ async function scrapeGoogleResults() {
   console.log(`📍 Location: ${LOCATION_QUERY}`);
   console.log(`📊 Total searches: ${ATS_SITES.length * JOB_TERMS.length}\n`);
 
-  // Create timestamped output folder
+  // Create timestamped output folder with keywords and location
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0] + '_' + 
                     new Date().toTimeString().split(' ')[0].replace(/:/g, '');
-  const outputDir = path.join(__dirname, 'results', timestamp);
+  
+  // Create a sanitized folder name that includes job terms and location
+  const sanitizedTerms = JOB_TERMS.map(term => term.replace(/[^a-zA-Z0-9]/g, '_')).join('-');
+  const sanitizedLocation = LOCATION_QUERY.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+  const folderName = `${timestamp}_${sanitizedTerms}_${sanitizedLocation}`;
+  
+  const outputDir = path.join(__dirname, 'results', folderName);
   fs.mkdirSync(outputDir, { recursive: true });
   console.log(`📁 Output directory: ${outputDir}\n`);
 

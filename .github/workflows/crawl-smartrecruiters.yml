@@ -48,6 +48,15 @@ jobs:
           export DATABASE_URL="${DATABASE_URL//25061/25060}"
           npm run crawl:smartrecruiters:new
       
+      - name: Run SmartRecruiters crawler (all companies)
+        working-directory: ./app
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # Use direct connection for crawling (long-running process)
+          export DATABASE_URL="${DATABASE_URL//25061/25060}"
+          npm run crawl:smartrecruiters
+      
       - name: Report status
         if: always()
         run: |

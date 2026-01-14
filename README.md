@@ -350,42 +350,6 @@ service cloud.firestore {
 
 ---
 
-## Core design choices (keeps it “Big Tech worthy” but not overbuilt)
-
-### 1) Adapter-based ingestion (prevents scraping chaos)
-Implement adapters per source type:
-
-- `GreenhouseAdapter`
-- `LeverAdapter`
-- *(Stretch)* `WorkdayAdapter`
-
-Each adapter does:
-1) fetch jobs
-2) map to a normalized schema
-
-This keeps your code clean and extensible without microservices.
-
-### 2) Deduplication strategy (simple, robust)
-Prefer stable IDs when available:
-- `(source_platform, external_job_id)` unique
-
-Fallback:
-- `dedupe_key = sha256(company + normalized_title + normalized_location + canonical_apply_url)`
-
-Also track:
-- `first_seen_at` (first time observed)
-- `last_seen_at` (last time observed)
-- `status` flips to CLOSED if not seen after X runs (stretch-lite)
-
-### 3) Search that ships (Postgres FTS)
-Use Postgres full-text search:
-- `search_vector = to_tsvector(title + description + requirements)`
-- GIN index on `search_vector`
-
-This is fast, deployable, and interview-defensible.
-
----
-
 ## Repository Structure
 ```
 /InternAtlas

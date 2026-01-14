@@ -7,9 +7,10 @@ import Image from "next/image";
 import { JobCard, JobCardSkeleton } from "./JobCard";
 import { JobDetailPanel, JobDetailSkeleton } from "./JobDetailPanel";
 import { TagInput } from "./TagInput";
+import { Cartographer } from "./Cartographer";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthButton } from "./AuthButton";
-import { addTrackedJob, bulkAddTrackedJobs } from "@/lib/firestore";
+import { addTrackedJob, bulkAddTrackedJobs, createCustomTable, getUserTrackedJobs } from "@/lib/firestore";
 
 type Job = {
   id: string;
@@ -214,6 +215,15 @@ export default function JobSearch() {
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [showLimitWarning, setShowLimitWarning] = useState<{show: boolean, type: 'title' | 'location' | null}>({show: false, type: null});
   const [mobileSearchExpanded, setMobileSearchExpanded] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
+  
+  // Save to Custom Table modal
+  const [saveToTableModalOpen, setSaveToTableModalOpen] = useState(false);
+  const [newTableName, setNewTableName] = useState('');
+  const [isCreatingTable, setIsCreatingTable] = useState(false);
+  
+  // Tracked jobs (for showing save status on job cards)
+  const [trackedJobs, setTrackedJobs] = useState<Map<string, 'to_apply' | 'applied'>>(new Map());
 
   // Initialize dark mode and listen for system preference changes
   useEffect(() => {
@@ -267,6 +277,23 @@ export default function JobSearch() {
   useEffect(() => {
     fetchLatestUpdatedAt();
   }, []);
+
+  // Fetch tracked jobs when user logs in
+  useEffect(() => {
+    if (user?.uid) {
+      getUserTrackedJobs(user.uid).then(jobs => {
+        const map = new Map<string, 'to_apply' | 'applied'>();
+        jobs.forEach(job => {
+          map.set(job.jobId, job.status);
+        });
+        setTrackedJobs(map);
+      }).catch(err => {
+        console.error('Failed to fetch tracked jobs:', err);
+      });
+    } else {
+      setTrackedJobs(new Map());
+    }
+  }, [user?.uid]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -681,31 +708,35 @@ export default function JobSearch() {
 
   const handleAddToApply = async (jobId: string) => {
     if (!user) {
-      alert("Please sign in to track jobs");
+      alert('Please sign in to track jobs');
       return;
     }
 
     try {
-      await addTrackedJob({ userId: user.uid, jobId, status: "to_apply" });
-      alert("Job added to \"To Apply\"");
+      await addTrackedJob({ userId: user.uid, jobId, status: 'to_apply' });
+      // Update local state immediately
+      setTrackedJobs(prev => new Map(prev).set(jobId, 'to_apply'));
+      alert('Job added to "To Apply"');
     } catch (error) {
-      console.error("Error adding job to To Apply:", error);
-      alert("Failed to add job. Please try again.");
+      console.error('Error adding job to To Apply:', error);
+      alert('Failed to add job. Please try again.');
     }
   };
 
   const handleAddToApplied = async (jobId: string) => {
     if (!user) {
-      alert("Please sign in to track jobs");
+      alert('Please sign in to track jobs');
       return;
     }
 
     try {
-      await addTrackedJob({ userId: user.uid, jobId, status: "applied" });
-      alert("Job added to \"Applied\"");
+      await addTrackedJob({ userId: user.uid, jobId, status: 'applied' });
+      // Update local state immediately
+      setTrackedJobs(prev => new Map(prev).set(jobId, 'applied'));
+      alert('Job added to "Applied"');
     } catch (error) {
-      console.error("Error adding job to Applied:", error);
-      alert("Failed to add job. Please try again.");
+      console.error('Error adding job to Applied:', error);
+      alert('Failed to add job. Please try again.');
     }
   };
 
@@ -715,6 +746,49 @@ export default function JobSearch() {
     // On mobile, open the detail sheet
     if (window.innerWidth < 768) {
       setMobileDetailOpen(true);
+    }
+  };
+
+  // Cartographer handler - applies AI-suggested search terms
+  const handleCartographerSuggestions = (titleKeywords: string[], locationKeywords: string[]) => {
+    const newTitleTags = titleKeywords.slice(0, 5); // Limit to 5
+    const newLocationTags = locationKeywords.slice(0, 5); // Limit to 5
+    
+    setTitleTags(newTitleTags);
+    setLocationTags(newLocationTags);
+    
+    // Trigger search with new terms
+    fetchJobs(1, { 
+      overrideState: { 
+        titleTags: newTitleTags, 
+        locationTags: newLocationTags 
+      } 
+    });
+  };
+
+  // Handle creating custom table from current search
+  const handleCreateCustomTable = async () => {
+    if (!user || !newTableName.trim()) return;
+    
+    setIsCreatingTable(true);
+    try {
+      await createCustomTable({
+        userId: user.uid,
+        name: newTableName.trim(),
+        titleKeywords: titleTags,
+        locationKeywords: locationTags,
+        companyFilter: companyFilter,
+        selectedPlatforms: selectedPlatforms,
+      });
+      
+      setSaveToTableModalOpen(false);
+      setNewTableName("");
+      alert("Custom table created successfully!");
+    } catch (error) {
+      console.error("Error creating custom table:", error);
+      alert("Failed to create custom table. Please try again.");
+    } finally {
+      setIsCreatingTable(false);
     }
   };
 
@@ -802,24 +876,43 @@ export default function JobSearch() {
 
         {/* Search Bar */}
         <div className="border-t border-slate-100 dark:border-slate-700 px-4 py-3 lg:px-6">
-          {/* Mobile Search Toggle */}
-          <button
-            type="button"
-            onClick={() => setMobileSearchExpanded(!mobileSearchExpanded)}
-            className="md:hidden flex items-center justify-between w-full mb-3 text-sm font-medium text-slate-700 dark:text-slate-200"
-          >
-            <span>Search Filters</span>
-            <svg 
-              className={`h-5 w-5 transition-transform ${mobileSearchExpanded ? 'rotate-180' : ''}`} 
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
+          {/* Search Filters Toggle */}
+          <div className="flex items-center justify-between mb-3">
+            {/* Mobile Toggle */}
+            <button
+              type="button"
+              onClick={() => setMobileSearchExpanded(!mobileSearchExpanded)}
+              className="md:hidden flex items-center justify-between w-full text-sm font-medium text-slate-700 dark:text-slate-200"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+              <span>Search Filters</span>
+              <svg 
+                className={`h-5 w-5 transition-transform ${mobileSearchExpanded ? 'rotate-180' : ''}`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {/* Desktop Toggle */}
+            <button
+              type="button"
+              onClick={() => setFiltersExpanded(!filtersExpanded)}
+              className="hidden md:flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+            >
+              <svg 
+                className={`h-5 w-5 transition-transform ${filtersExpanded ? 'rotate-180' : ''}`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+              <span>{filtersExpanded ? 'Hide' : 'Show'} Filters</span>
+            </button>
+          </div>
 
-          <div className={`flex flex-wrap items-start gap-2 md:gap-3 ${mobileSearchExpanded ? '' : 'hidden md:flex'}`}>
+          <div className={`flex flex-wrap items-start gap-2 md:gap-3 transition-all ${mobileSearchExpanded ? '' : 'hidden'} ${filtersExpanded ? 'md:flex' : 'md:hidden'}`}>
             <div className="flex flex-1 flex-wrap md:flex-nowrap items-start gap-2 min-w-0">
               <div className="relative flex-1 md:flex-[2] min-w-[180px]">
                 {showLimitWarning.show && showLimitWarning.type === 'title' && (
@@ -839,7 +932,7 @@ export default function JobSearch() {
                     }
                     setTitleTags(newTags);
                   }}
-                  placeholder="Job titles (Enter to add)"
+                  placeholder='Job titles (Press "Enter" to add)'
                   className="flex-1 md:flex-[2] min-w-[180px]"
                 />
               </div>
@@ -868,30 +961,61 @@ export default function JobSearch() {
                     }
                     setLocationTags(newTags);
                   }}
-                  placeholder="Locations (Enter to add)"
+                  placeholder='Locations (Press "Enter" to add)'
                   className="flex-1 min-w-[180px]"
                   icon="location"
                 />
               </div>
             </div>
-            <button
-              type="button"
-              className="h-10 w-full md:w-auto rounded-lg bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed relative"
-              onClick={() => fetchJobs(1)}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <span className="flex items-center gap-2">
-                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Searching...
-                </span>
-              ) : (
-                "Search"
+            <div className="flex w-full md:w-auto gap-2">
+              <button
+                type="button"
+                className="h-10 flex-1 md:flex-none rounded-lg bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed relative"
+                onClick={() => fetchJobs(1)}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Searching...
+                  </span>
+                ) : (
+                  "Search"
+                )}
+              </button>
+              <div className="relative group">
+                {!user && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    Login to use AI tool Cartographer
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900"></div>
+                  </div>
+                )}
+                <Cartographer onApplySuggestions={handleCartographerSuggestions} disabled={!user} />
+              </div>
+              {user && (
+                <div className="relative group">
+                  <button
+                    type="button"
+                    onClick={() => setSaveToTableModalOpen(true)}
+                    disabled={titleTags.length === 0 && locationTags.length === 0 && !companyFilter}
+                    className="h-10 flex-1 md:flex-none rounded-lg border border-teal-600 text-teal-600 dark:border-teal-500 dark:text-teal-400 px-4 text-sm font-medium transition hover:bg-teal-50 dark:hover:bg-teal-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                    title="Save current search terms to a custom table"
+                  >
+                    <span className="hidden sm:inline">Add to Custom Table</span>
+                    <span className="sm:hidden">Save</span>
+                  </button>
+                  {titleTags.length === 0 && locationTags.length === 0 && !companyFilter && (
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      No terms searched for
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800"></div>
+                    </div>
+                  )}
+                </div>
               )}
-            </button>
+            </div>
           </div>
 
           {/* Filter Pills */}
@@ -1201,6 +1325,7 @@ export default function JobSearch() {
                   isChecked={selectedJobs.has(job.id)}
                   onCheck={(checked) => handleJobCheck(job.id, checked)}
                   index={index}
+                  savedStatus={trackedJobs.get(job.id)}
                 />
               ))
             )}
@@ -1433,6 +1558,104 @@ export default function JobSearch() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Add to Custom Table Modal */}
+      {saveToTableModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setSaveToTableModalOpen(false)}>
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6">
+              <h2 className="text-xl font-semibold mb-4 text-slate-900 dark:text-white">Save Search as Custom Table</h2>
+              
+              {/* Table Name Input */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Table Name
+                </label>
+                <input
+                  type="text"
+                  value={newTableName}
+                  onChange={(e) => setNewTableName(e.target.value)}
+                  placeholder="e.g., Software Engineering Internships 2025"
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              {/* Current Search Terms Display */}
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Current Search Terms:</h3>
+                
+                {titleTags.length > 0 && (
+                  <div className="mb-3">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Job Titles:</span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {titleTags.map((tag, i) => (
+                        <span key={i} className="inline-flex items-center px-2 py-1 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-sm">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {locationTags.length > 0 && (
+                  <div className="mb-3">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Locations:</span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {locationTags.map((tag, i) => (
+                        <span key={i} className="inline-flex items-center px-2 py-1 rounded-md bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-sm">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {companyFilter && (
+                  <div className="mb-3">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Company:</span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      <span className="inline-flex items-center px-2 py-1 rounded-md bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-sm">
+                        {companyFilter}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {selectedPlatforms.length > 0 && (
+                  <div className="mb-3">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Platforms:</span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {selectedPlatforms.map((platform, i) => (
+                        <span key={i} className="inline-flex items-center px-2 py-1 rounded-md bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 text-sm">
+                          {platform}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setSaveToTableModalOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition"
+                  disabled={isCreatingTable}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateCustomTable}
+                  disabled={isCreatingTable || !newTableName.trim()}
+                  className="px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isCreatingTable ? 'Creating...' : 'Create Table'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
       </div>
   );

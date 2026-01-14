@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 
 type CartographerProps = {
   onApplySuggestions: (titleKeywords: string[], locationKeywords: string[]) => void;
+  disabled?: boolean;
 };
 
 type Suggestion = {
@@ -12,7 +13,7 @@ type Suggestion = {
   explanation: string;
 };
 
-export function Cartographer({ onApplySuggestions }: CartographerProps) {
+export function Cartographer({ onApplySuggestions, disabled = false }: CartographerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -38,7 +39,7 @@ export function Cartographer({ onApplySuggestions }: CartographerProps) {
   }, [isOpen]);
 
   async function handleSubmit() {
-    if (!query.trim() || isLoading) return;
+    if (!query.trim() || isLoading || disabled) return;
 
     setIsLoading(true);
     setError(null);
@@ -85,8 +86,9 @@ export function Cartographer({ onApplySuggestions }: CartographerProps) {
       {/* Trigger Button */}
       <button
         type="button"
-        onClick={() => setIsOpen(true)}
-        className="group inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 px-3 py-2 text-sm font-medium text-white shadow-md transition-all hover:shadow-lg hover:from-violet-500 hover:to-indigo-500 active:scale-[0.98]"
+        onClick={() => !disabled && setIsOpen(true)}
+        disabled={disabled}
+        className="group inline-flex items-center gap-2 h-10 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 px-3 text-sm font-medium text-white shadow-md transition-all hover:shadow-lg hover:from-violet-500 hover:to-indigo-500 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md disabled:hover:from-violet-600 disabled:hover:to-indigo-600"
         title="Get AI-powered search suggestions"
       >
         <svg 

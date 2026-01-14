@@ -10,7 +10,7 @@ import { TagInput } from "./TagInput";
 import { Cartographer } from "./Cartographer";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthButton } from "./AuthButton";
-import { addTrackedJob, bulkAddTrackedJobs } from "@/lib/firestore";
+import { addTrackedJob, bulkAddTrackedJobs, createCustomTable } from "@/lib/firestore";
 
 type Job = {
   id: string;
@@ -215,6 +215,11 @@ export default function JobSearch() {
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [showLimitWarning, setShowLimitWarning] = useState<{show: boolean, type: 'title' | 'location' | null}>({show: false, type: null});
   const [mobileSearchExpanded, setMobileSearchExpanded] = useState(false);
+  
+  // Save to Custom Table modal
+  const [saveToTableModalOpen, setSaveToTableModalOpen] = useState(false);
+  const [newTableName, setNewTableName] = useState("");
+  const [isCreatingTable, setIsCreatingTable] = useState(false);
 
   // Initialize dark mode and listen for system preference changes
   useEffect(() => {
@@ -736,6 +741,32 @@ export default function JobSearch() {
     });
   };
 
+  // Handle creating custom table from current search
+  const handleCreateCustomTable = async () => {
+    if (!user || !newTableName.trim()) return;
+    
+    setIsCreatingTable(true);
+    try {
+      await createCustomTable({
+        userId: user.uid,
+        name: newTableName.trim(),
+        titleKeywords: titleTags,
+        locationKeywords: locationTags,
+        companyFilter: companyFilter,
+        selectedPlatforms: selectedPlatforms,
+      });
+      
+      setSaveToTableModalOpen(false);
+      setNewTableName("");
+      alert("Custom table created successfully!");
+    } catch (error) {
+      console.error("Error creating custom table:", error);
+      alert("Failed to create custom table. Please try again.");
+    } finally {
+      setIsCreatingTable(false);
+    }
+  };
+
   const totalPages = Math.max(1, Math.ceil(data.total / pageSize));
   const start = data.total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(data.total, start + data.items.length - 1);
@@ -911,7 +942,35 @@ export default function JobSearch() {
                   "Search"
                 )}
               </button>
-              <Cartographer onApplySuggestions={handleCartographerSuggestions} />
+              <div className="relative group">
+                {!user && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    Login to use AI tool Cartographer
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900"></div>
+                  </div>
+                )}
+                <Cartographer onApplySuggestions={handleCartographerSuggestions} disabled={!user} />
+              </div>
+              {user && (
+                <div className="relative group">
+                  <button
+                    type="button"
+                    onClick={() => setSaveToTableModalOpen(true)}
+                    disabled={titleTags.length === 0 && locationTags.length === 0 && !companyFilter}
+                    className="h-10 flex-1 md:flex-none rounded-lg border border-teal-600 text-teal-600 dark:border-teal-500 dark:text-teal-400 px-4 text-sm font-medium transition hover:bg-teal-50 dark:hover:bg-teal-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                    title="Save current search terms to a custom table"
+                  >
+                    <span className="hidden sm:inline">Add to Custom Table</span>
+                    <span className="sm:hidden">Save</span>
+                  </button>
+                  {titleTags.length === 0 && locationTags.length === 0 && !companyFilter && (
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      No terms searched for
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800"></div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1454,6 +1513,104 @@ export default function JobSearch() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Add to Custom Table Modal */}
+      {saveToTableModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setSaveToTableModalOpen(false)}>
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6">
+              <h2 className="text-xl font-semibold mb-4 text-slate-900 dark:text-white">Save Search as Custom Table</h2>
+              
+              {/* Table Name Input */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Table Name
+                </label>
+                <input
+                  type="text"
+                  value={newTableName}
+                  onChange={(e) => setNewTableName(e.target.value)}
+                  placeholder="e.g., Software Engineering Internships 2025"
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              {/* Current Search Terms Display */}
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Current Search Terms:</h3>
+                
+                {titleTags.length > 0 && (
+                  <div className="mb-3">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Job Titles:</span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {titleTags.map((tag, i) => (
+                        <span key={i} className="inline-flex items-center px-2 py-1 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-sm">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {locationTags.length > 0 && (
+                  <div className="mb-3">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Locations:</span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {locationTags.map((tag, i) => (
+                        <span key={i} className="inline-flex items-center px-2 py-1 rounded-md bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-sm">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {companyFilter && (
+                  <div className="mb-3">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Company:</span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      <span className="inline-flex items-center px-2 py-1 rounded-md bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-sm">
+                        {companyFilter}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {selectedPlatforms.length > 0 && (
+                  <div className="mb-3">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Platforms:</span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {selectedPlatforms.map((platform, i) => (
+                        <span key={i} className="inline-flex items-center px-2 py-1 rounded-md bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 text-sm">
+                          {platform}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setSaveToTableModalOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition"
+                  disabled={isCreatingTable}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateCustomTable}
+                  disabled={isCreatingTable || !newTableName.trim()}
+                  className="px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isCreatingTable ? 'Creating...' : 'Create Table'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
       </div>
   );

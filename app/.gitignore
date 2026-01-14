@@ -47,6 +47,7 @@ next-env.d.ts
 # backups - keep main companies.csv but ignore timestamped backups
 /data/backups/companies-*.csv
 *.sql
+!prisma/migrations/**/*.sql
 *.dump
 
 # Large data files

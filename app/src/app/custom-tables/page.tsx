@@ -93,8 +93,14 @@ export default function CustomTablesPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   
+  // Status filter and bulk select
+  const [statusFilter, setStatusFilter] = useState<"open" | "closed" | "both">("both");
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
+  
   // Sidebar collapse
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false);
 
   const selectedTable = customTables.find(t => t.id === selectedTableId);
   const selectedJob = jobs.find(j => j.id === selectedJobId);
@@ -162,8 +168,15 @@ export default function CustomTablesPage() {
           params.set("search", searchQuery.trim());
         }
         
+        // Apply status filter
+        if (statusFilter === "open") {
+          params.set("status", "ACTIVE");
+        } else if (statusFilter === "closed") {
+          params.set("status", "CLOSED");
+        }
+        // If "both", don't set status param to get all jobs
+        
         // Apply sorting and pagination
-        params.set("status", "ACTIVE");
         params.set("sort", sortOption.sort);
         params.set("sortDir", sortOption.sortDir);
         params.set("page", String(page));
@@ -191,18 +204,15 @@ export default function CustomTablesPage() {
             // If never seen, use the total count directly (all jobs are NEW)
             newCount = data.total || 0;
           } else {
-            // Count NEW jobs from current results only (don't fetch all jobs)
+            // Count NEW jobs from current page only (conservative estimate)
+            // This avoids the inflated estimates from extrapolating page 1 percentage to all pages
             const lastSeen = new Date(selectedTable.lastSeenAt);
             newCount = data.items.filter((job: Job) => 
               new Date(job.createdAt) > lastSeen
             ).length;
             
-            // If we're on page 1 and have full results, estimate total NEW count
-            // This is approximate but avoids fetching thousands of jobs
-            if (data.items.length === pageSize && data.total > pageSize) {
-              const percentNew = newCount / data.items.length;
-              newCount = Math.round(data.total * percentNew);
-            }
+            // Don't extrapolate to avoid inflated estimates
+            // The badge will show "X+ NEW" to indicate there may be more
           }
           
           if (newCount !== selectedTable.newJobCount) {
@@ -220,7 +230,7 @@ export default function CustomTablesPage() {
     };
 
     fetchJobs();
-  }, [selectedTable, searchQuery, sortOption, page, pageSize]);
+  }, [selectedTable, searchQuery, sortOption, page, pageSize, statusFilter]);
   
   // Reset page when table changes
   useEffect(() => {
@@ -263,6 +273,34 @@ export default function CustomTablesPage() {
       alert("Failed to create table. Please try again.");
       setCreating(false);
     }
+  };
+
+  const handleJobCheck = (jobId: string, checked: boolean) => {
+    const newSet = new Set(selectedJobs);
+    if (checked) {
+      newSet.add(jobId);
+    } else {
+      newSet.delete(jobId);
+    }
+    setSelectedJobs(newSet);
+  };
+
+  const selectAllJobs = () => {
+    setSelectedJobs(new Set(jobs.map(j => j.id)));
+  };
+
+  const deselectAllJobs = () => {
+    setSelectedJobs(new Set());
+  };
+
+  const handleBulkAddToApply = () => {
+    console.log("Bulk add to 'To Apply':", Array.from(selectedJobs));
+    // TODO: Implement backend integration
+  };
+
+  const handleBulkAddToApplied = () => {
+    console.log("Bulk add to 'Applied':", Array.from(selectedJobs));
+    // TODO: Implement backend integration
   };
 
   const handleMarkAsSeen = async () => {
@@ -579,7 +617,7 @@ export default function CustomTablesPage() {
       
       <main className="flex flex-1 overflow-hidden">
         {/* Sidebar - Table List */}
-        <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed left-0 top-0 bottom-0 z-50 ${sidebarCollapsed ? 'w-16' : 'w-64'} bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 lg:static lg:translate-x-0 transition-all duration-300 flex flex-col`}>
+        <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed left-0 top-0 bottom-0 z-30 ${sidebarCollapsed ? 'w-16' : 'w-64'} bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 lg:static lg:translate-x-0 transition-all duration-300 flex flex-col`}>
           <div className="flex-none p-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
             {!sidebarCollapsed && <h2 className="font-semibold text-slate-900 dark:text-white">My Tables</h2>}
             <div className="flex items-center gap-1">
@@ -708,45 +746,61 @@ export default function CustomTablesPage() {
 
             {/* Filter summary */}
             {selectedTable && (
-              <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900/50">
-                {isLocked ? (
-                  <div className="space-y-1 text-xs text-slate-600 dark:text-slate-400">
-                    {selectedTable.titleKeywords.length > 0 && <div><strong>Title:</strong> {selectedTable.titleKeywords.join(", ")}</div>}
-                    {selectedTable.locationKeywords.length > 0 && <div><strong>Location:</strong> {selectedTable.locationKeywords.join(", ")}</div>}
-                    {selectedTable.companyFilter && <div><strong>Company:</strong> {selectedTable.companyFilter}</div>}
-                    {selectedTable.selectedPlatforms.length > 0 && <div><strong>Platforms:</strong> {selectedTable.selectedPlatforms.join(", ")}</div>}
-                    {selectedTable.titleKeywords.length === 0 && selectedTable.locationKeywords.length === 0 && !selectedTable.companyFilter && (
-                      <div className="text-slate-400">No filters - showing all jobs</div>
+              <div className="border-b border-slate-100 dark:border-slate-700">
+                <div className="px-4 py-2 flex items-center justify-between bg-slate-50 dark:bg-slate-900/50">
+                  <button
+                    type="button"
+                    onClick={() => setFiltersCollapsed(!filtersCollapsed)}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition"
+                  >
+                    <svg className={`h-4 w-4 transition-transform ${filtersCollapsed ? '' : 'rotate-180'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                    {filtersCollapsed ? 'Show' : 'Hide'} Table Filters
+                  </button>
+                </div>
+                {!filtersCollapsed && (
+                  <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900/50">
+                    {isLocked ? (
+                      <div className="space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                        {selectedTable.titleKeywords.length > 0 && <div><strong>Title:</strong> {selectedTable.titleKeywords.join(", ")}</div>}
+                        {selectedTable.locationKeywords.length > 0 && <div><strong>Location:</strong> {selectedTable.locationKeywords.join(", ")}</div>}
+                        {selectedTable.companyFilter && <div><strong>Company:</strong> {selectedTable.companyFilter}</div>}
+                        {selectedTable.selectedPlatforms.length > 0 && <div><strong>Platforms:</strong> {selectedTable.selectedPlatforms.join(", ")}</div>}
+                        {selectedTable.titleKeywords.length === 0 && selectedTable.locationKeywords.length === 0 && !selectedTable.companyFilter && (
+                          <div className="text-slate-400">No filters - showing all jobs</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Title</label>
+                          <TagInput tags={selectedTable.titleKeywords}
+                            onTagsChange={(tags) => {
+                              updateCustomTable(selectedTable.id, { titleKeywords: tags });
+                              setCustomTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, titleKeywords: tags } : t));
+                            }} placeholder="Type keyword, press Enter..." icon="search" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Location</label>
+                          <TagInput tags={selectedTable.locationKeywords}
+                            onTagsChange={(tags) => {
+                              updateCustomTable(selectedTable.id, { locationKeywords: tags });
+                              setCustomTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, locationKeywords: tags } : t));
+                            }} placeholder="Type location, press Enter..." icon="location" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Company</label>
+                          <input type="text" value={selectedTable.companyFilter}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              updateCustomTable(selectedTable.id, { companyFilter: value });
+                              setCustomTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, companyFilter: value } : t));
+                            }}
+                            placeholder="Company..." className="w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1 text-xs text-slate-900 dark:text-white" />
+                        </div>
+                      </div>
                     )}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Title</label>
-                      <TagInput tags={selectedTable.titleKeywords}
-                        onTagsChange={(tags) => {
-                          updateCustomTable(selectedTable.id, { titleKeywords: tags });
-                          setCustomTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, titleKeywords: tags } : t));
-                        }} placeholder="Type keyword, press Enter..." icon="search" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Location</label>
-                      <TagInput tags={selectedTable.locationKeywords}
-                        onTagsChange={(tags) => {
-                          updateCustomTable(selectedTable.id, { locationKeywords: tags });
-                          setCustomTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, locationKeywords: tags } : t));
-                        }} placeholder="Type location, press Enter..." icon="location" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Company</label>
-                      <input type="text" value={selectedTable.companyFilter}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          updateCustomTable(selectedTable.id, { companyFilter: value });
-                          setCustomTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, companyFilter: value } : t));
-                        }}
-                        placeholder="Company..." className="w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1 text-xs text-slate-900 dark:text-white" />
-                    </div>
                   </div>
                 )}
               </div>
@@ -804,6 +858,47 @@ export default function CustomTablesPage() {
                   ))}
                 </select>
               </div>
+              
+              {/* Status Filter and Bulk Select */}
+              <div className="flex items-center gap-2">
+                <select
+                  className={`h-8 appearance-none rounded-full pl-3 pr-8 text-xs font-medium transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-100 dark:focus:ring-teal-900 ${
+                    statusFilter === "open"
+                      ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400"
+                      : statusFilter === "closed"
+                      ? "bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400"
+                      : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                  }`}
+                  value={statusFilter}
+                  onChange={(e) => {
+                    const newStatus = e.target.value as "open" | "closed" | "both";
+                    setStatusFilter(newStatus);
+                    setPage(1);
+                  }}
+                >
+                  <option value="open">● Open Jobs</option>
+                  <option value="closed">● Closed Jobs</option>
+                  <option value="both">● All Jobs</option>
+                </select>
+                
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkMode(!bulkMode);
+                    if (bulkMode) setSelectedJobs(new Set());
+                  }}
+                  className={`h-8 inline-flex items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition ${
+                    bulkMode
+                      ? "bg-teal-100 dark:bg-teal-900/50 text-teal-700 dark:text-teal-400"
+                      : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
+                  }`}
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  Bulk Select
+                </button>
+              </div>
             </div>
           )}
 
@@ -819,6 +914,49 @@ export default function CustomTablesPage() {
                     {((page - 1) * pageSize) + 1}–{Math.min(page * pageSize, totalJobs)}
                   </span>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Bulk Mode Actions Bar */}
+          {bulkMode && selectedJobs.size > 0 && (
+            <div className="flex-none border-b border-slate-100 dark:border-slate-700 bg-teal-50 dark:bg-teal-900/30 px-4 py-2">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-teal-700 dark:text-teal-400">
+                  {selectedJobs.size} job{selectedJobs.size !== 1 ? "s" : ""} selected
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleBulkAddToApply}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-teal-700"
+                  >
+                    Add to "To Apply"
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBulkAddToApplied}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-600"
+                  >
+                    Mark as Applied
+                  </button>
+                </div>
+                <div className="ml-auto flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={selectAllJobs}
+                    className="text-sm text-teal-600 dark:text-teal-400 hover:underline"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={deselectAllJobs}
+                    className="text-sm text-slate-500 dark:text-slate-400 hover:underline"
+                  >
+                    Deselect all
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -866,6 +1004,9 @@ export default function CustomTablesPage() {
                   onClick={() => setSelectedJobId(job.id)} 
                   index={index}
                   showNewBadge={isJobNew(job)}
+                  bulkMode={bulkMode}
+                  isChecked={selectedJobs.has(job.id)}
+                  onCheck={(checked) => handleJobCheck(job.id, checked)}
                 />
               ))
             )}

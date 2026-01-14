@@ -359,7 +359,7 @@ export default function JobSearch() {
     const cached = cacheRef.current.get(cacheKey);
     if (cached) {
       // Use cached data instantly
-      console.log(`⚡ Using cached page ${nextPage} (instant load)`);
+      console.log(`⚡ Page ${nextPage} loaded instantly from cache (0ms)`);
       setData(cached);
       setPage(nextState.page);
       setPageSize(nextState.pageSize);
@@ -385,10 +385,11 @@ export default function JobSearch() {
       return; // Skip loading - instant!
     }
 
+    // Not in cache, fetch from API
     setIsLoading(true);
     setError(null);
 
-    console.log(`📡 Fetching page ${nextPage} from API...`);
+    console.log(`📡 Page ${nextPage} not cached, fetching from API...`);
 
     try {
       if (!options.skipUrlUpdate) {

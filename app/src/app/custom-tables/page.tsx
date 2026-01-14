@@ -359,16 +359,14 @@ export default function CustomTablesPage() {
       setCustomTables(prev =>
         prev.map(t =>
           t.id === selectedTable.id
-            ? { ...t, lastSeenAt: null }
+            ? { ...t, lastSeenAt: null, newJobCount: 0 }
             : t
         )
       );
       setIsLocked(false);
       setUnlockModalOpen(false);
-      // Reload jobs to recalculate which are new
-      if (selectedTable) {
-        await loadJobs();
-      }
+      // Reset page to 1 to trigger job reload and recalculate NEW count
+      setPage(1);
     } catch (error) {
       console.error("Error unlocking table:", error);
     }

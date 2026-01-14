@@ -215,6 +215,7 @@ export default function JobSearch() {
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [showLimitWarning, setShowLimitWarning] = useState<{show: boolean, type: 'title' | 'location' | null}>({show: false, type: null});
   const [mobileSearchExpanded, setMobileSearchExpanded] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
   
   // Save to Custom Table modal
   const [saveToTableModalOpen, setSaveToTableModalOpen] = useState(false);
@@ -875,24 +876,43 @@ export default function JobSearch() {
 
         {/* Search Bar */}
         <div className="border-t border-slate-100 dark:border-slate-700 px-4 py-3 lg:px-6">
-          {/* Mobile Search Toggle */}
-          <button
-            type="button"
-            onClick={() => setMobileSearchExpanded(!mobileSearchExpanded)}
-            className="md:hidden flex items-center justify-between w-full mb-3 text-sm font-medium text-slate-700 dark:text-slate-200"
-          >
-            <span>Search Filters</span>
-            <svg 
-              className={`h-5 w-5 transition-transform ${mobileSearchExpanded ? 'rotate-180' : ''}`} 
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
+          {/* Search Filters Toggle */}
+          <div className="flex items-center justify-between mb-3">
+            {/* Mobile Toggle */}
+            <button
+              type="button"
+              onClick={() => setMobileSearchExpanded(!mobileSearchExpanded)}
+              className="md:hidden flex items-center justify-between w-full text-sm font-medium text-slate-700 dark:text-slate-200"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+              <span>Search Filters</span>
+              <svg 
+                className={`h-5 w-5 transition-transform ${mobileSearchExpanded ? 'rotate-180' : ''}`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {/* Desktop Toggle */}
+            <button
+              type="button"
+              onClick={() => setFiltersExpanded(!filtersExpanded)}
+              className="hidden md:flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+            >
+              <svg 
+                className={`h-5 w-5 transition-transform ${filtersExpanded ? 'rotate-180' : ''}`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+              <span>{filtersExpanded ? 'Hide' : 'Show'} Filters</span>
+            </button>
+          </div>
 
-          <div className={`flex flex-wrap items-start gap-2 md:gap-3 ${mobileSearchExpanded ? '' : 'hidden md:flex'}`}>
+          <div className={`flex flex-wrap items-start gap-2 md:gap-3 transition-all ${mobileSearchExpanded ? '' : 'hidden'} ${filtersExpanded ? 'md:flex' : 'md:hidden'}`}>
             <div className="flex flex-1 flex-wrap md:flex-nowrap items-start gap-2 min-w-0">
               <div className="relative flex-1 md:flex-[2] min-w-[180px]">
                 {showLimitWarning.show && showLimitWarning.type === 'title' && (

@@ -14,6 +14,8 @@ import {
   deleteCustomTable,
   markTableAsSeen,
   updateNewJobCount,
+  addTrackedJob,
+  bulkAddTrackedJobs,
   type CustomTable,
 } from "@/lib/firestore";
 
@@ -293,14 +295,42 @@ export default function CustomTablesPage() {
     setSelectedJobs(new Set());
   };
 
-  const handleBulkAddToApply = () => {
-    console.log("Bulk add to 'To Apply':", Array.from(selectedJobs));
-    // TODO: Implement backend integration
+  const handleBulkAddToApply = async () => {
+    if (!user) {
+      alert("Please sign in to track jobs");
+      return;
+    }
+
+    try {
+      const jobIds = Array.from(selectedJobs);
+      await bulkAddTrackedJobs(user.uid, jobIds, "to_apply");
+
+      alert(`${jobIds.length} job(s) added to "To Apply"`);
+      setSelectedJobs(new Set());
+      setBulkMode(false);
+    } catch (error) {
+      console.error("Error adding jobs to To Apply:", error);
+      alert("Failed to add jobs. Please try again.");
+    }
   };
 
-  const handleBulkAddToApplied = () => {
-    console.log("Bulk add to 'Applied':", Array.from(selectedJobs));
-    // TODO: Implement backend integration
+  const handleBulkAddToApplied = async () => {
+    if (!user) {
+      alert("Please sign in to track jobs");
+      return;
+    }
+
+    try {
+      const jobIds = Array.from(selectedJobs);
+      await bulkAddTrackedJobs(user.uid, jobIds, "applied");
+
+      alert(`${jobIds.length} job(s) added to "Applied"`);
+      setSelectedJobs(new Set());
+      setBulkMode(false);
+    } catch (error) {
+      console.error("Error adding jobs to Applied:", error);
+      alert("Failed to add jobs. Please try again.");
+    }
   };
 
   const handleMarkAsSeen = async () => {

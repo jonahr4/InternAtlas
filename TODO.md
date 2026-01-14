@@ -58,54 +58,54 @@ After deployed, fix front end with authentication and advanced features
 - [x] Add logout functionality
 
 ### Logged-In UI Components
-- [ ] Add 3-line menu button in top right corner when logged in
-- [ ] Implement side navigation bar that slides in from right when menu clicked
-- [ ] Add "Custom Tables" option in side nav
-- [ ] Add "Application Tracking" option in side nav
-- [ ] Add new "Select Jobs" button above every table that enables job selection mode
-- [ ] Implement selector squares on left of each job row (only visible when selection mode triggered)
-- [ ] once jobs are slected user. has optopn to add it to "To Apply" or "Applied" boards
+- [x] Add 3-line menu button in top right corner when logged in
+- [x] Implement side navigation bar that slides in from right when menu clicked
+- [x] Add "Custom Tables" option in side nav
+- [x] Add "Application Tracking" option in side nav
+- [x] Add new "Select Jobs" button above every table that enables job selection mode
+- [x] Implement selector squares on left of each job row (only visible when selection mode triggered)
+- [x] once jobs are slected user. has optopn to add it to "To Apply" or "Applied" boards
 
 ### Custom Tables Feature
-- [ ] Create "Custom Tables" screen accessible from side nav
-- [ ] Add UI to create new custom table with name (e.g., "MA intern")
-- [ ] Add keyword input field for custom table setup
-- [ ] Add location input field for custom table setup (or any other filters)
-- [ ] Display existing custom tables stacked vertically on Custom Tables screen
-- [ ] Implement filtering logic to show only jobs matching custom table criteria
-- [ ] Add ability to click on custom table to view filtered results
-- [ ] Make it easier for users to look at different customized boards
+- [x] Create "Custom Tables" screen accessible from side nav
+- [x] Add UI to create new custom table with name (e.g., "MA intern")
+- [x] Add keyword input field for custom table setup
+- [x] Add location input field for custom table setup (or any other filters)
+- [x] Display existing custom tables stacked vertically on Custom Tables screen
+- [x] Implement filtering logic to show only jobs matching custom table criteria
+- [x] Add ability to click on custom table to view filtered results
+- [x] Make it easier for users to look at different customized boards
 
 ### "SEEN" Feature for Custom Tables
-- [ ] Add "SEEN" button to each custom table view
-- [ ] Store timestamp of when "SEEN" was last clicked for each custom table
-- [ ] Compare job posting dates against last "SEEN" timestamp
-- [ ] Display "NEW" badge on jobs posted after last "SEEN" click
-- [ ] Remove "NEW" badges when "SEEN" is clicked again
-- [ ] Persist "SEEN" state in database per user per custom table
+- [x] Add "SEEN" button to each custom table view
+- [x] Store timestamp of when "SEEN" was last clicked for each custom table
+- [x] Compare job posting dates against last "SEEN" timestamp
+- [x] Display "NEW" badge on jobs posted after last "SEEN" click
+- [x] Remove "NEW" badges when "SEEN" is clicked again
+- [x] Persist "SEEN" state in database per user per custom table
 
 ### Application Tracking - "To Apply" Table
-- [ ] Create "Application Tracking" screen accessible from side nav
-- [ ] Implement "To Apply" functionality when job is selected
-- [ ] Create "Jobs To Apply to" table showing all jobs user selected to apply to
-- [ ] Display "To Apply" table at top of Application Tracking screen
-- [ ] Add checkbox/button to move jobs from "To Apply" to "Applied"
-- [ ] Add remove button to delete jobs from "To Apply" table
-- [ ] Store "To Apply" jobs in database per user
+- [x] Create "Application Tracking" screen accessible from side nav
+- [x] Implement "To Apply" functionality when job is selected
+- [x] Create "Jobs To Apply to" table showing all jobs user selected to apply to
+- [x] Display "To Apply" table at top of Application Tracking screen
+- [x] Add checkbox/button to move jobs from "To Apply" to "Applied"
+- [x] Add remove button to delete jobs from "To Apply" table
+- [x] Store "To Apply" jobs in database per user
 
 ### Application Tracking - "Applied" Table
-- [ ] Create "Applied" table below "To Apply" table on same screen
-- [ ] Implement functionality to move jobs from "To Apply" to "Applied" when checked
-- [ ] Display all jobs marked as applied
-- [ ] Add remove button to delete jobs from "Applied" table
-- [ ] Store "Applied" jobs in database per user
+- [x] Create "Applied" table below "To Apply" table on same screen
+- [x] Implement functionality to move jobs from "To Apply" to "Applied" when checked
+- [x] Display all jobs marked as applied
+- [x] Add remove button to delete jobs from "Applied" table
+- [x] Store "Applied" jobs in database per user
 
 ### Job Selection Workflow
-- [ ] When "Select Jobs" button clicked, show selector squares on left of job rows
-- [ ] Display "Add to Applied" and "Add to To Apply" options after jobs selected
-- [ ] Implement bulk add to "To Apply" from main job board
-- [ ] Implement bulk add to "Applied" from main job board
-- [ ] Add confirmation feedback when jobs are added to tables
+- [x] When "Select Jobs" button clicked, show selector squares on left of job rows
+- [x] Display "Add to Applied" and "Add to To Apply" options after jobs selected
+- [x] Implement bulk add to "To Apply" from main job board
+- [x] Implement bulk add to "Applied" from main job board
+- [x] Add confirmation feedback when jobs are added to tables
 
 ### Email Notifications (Stretch Goal)
 - [ ] Create email subscription system for companies and search terms

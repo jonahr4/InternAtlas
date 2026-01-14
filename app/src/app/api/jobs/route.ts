@@ -22,6 +22,23 @@ function getTokens(input: string): string[] {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
+  // Support fetching by IDs (for tracking page)
+  const idsParam = searchParams.get("ids")?.trim();
+  if (idsParam) {
+    const ids = idsParam.split(",").map(id => id.trim()).filter(Boolean);
+    const jobs = await prisma.job.findMany({
+      where: { id: { in: ids } },
+      include: { company: true },
+      orderBy: { createdAt: "desc" },
+    });
+    return NextResponse.json({
+      items: jobs,
+      total: jobs.length,
+      page: 1,
+      pageSize: jobs.length,
+    });
+  }
+
   const q = searchParams.get("q")?.trim();
   const title = searchParams.get("title")?.trim();
   const location = searchParams.get("location")?.trim();

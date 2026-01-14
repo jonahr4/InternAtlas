@@ -7,6 +7,7 @@ import Image from "next/image";
 import { JobCard, JobCardSkeleton } from "./JobCard";
 import { JobDetailPanel, JobDetailSkeleton } from "./JobDetailPanel";
 import { TagInput } from "./TagInput";
+import { Cartographer } from "./Cartographer";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthButton } from "./AuthButton";
 import { addTrackedJob, bulkAddTrackedJobs } from "@/lib/firestore";
@@ -718,6 +719,23 @@ export default function JobSearch() {
     }
   };
 
+  // Cartographer handler - applies AI-suggested search terms
+  const handleCartographerSuggestions = (titleKeywords: string[], locationKeywords: string[]) => {
+    const newTitleTags = titleKeywords.slice(0, 5); // Limit to 5
+    const newLocationTags = locationKeywords.slice(0, 5); // Limit to 5
+    
+    setTitleTags(newTitleTags);
+    setLocationTags(newLocationTags);
+    
+    // Trigger search with new terms
+    fetchJobs(1, { 
+      overrideState: { 
+        titleTags: newTitleTags, 
+        locationTags: newLocationTags 
+      } 
+    });
+  };
+
   const totalPages = Math.max(1, Math.ceil(data.total / pageSize));
   const start = data.total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(data.total, start + data.items.length - 1);
@@ -874,24 +892,27 @@ export default function JobSearch() {
                 />
               </div>
             </div>
-            <button
-              type="button"
-              className="h-10 w-full md:w-auto rounded-lg bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed relative"
-              onClick={() => fetchJobs(1)}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <span className="flex items-center gap-2">
-                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Searching...
-                </span>
-              ) : (
-                "Search"
-              )}
-            </button>
+            <div className="flex w-full md:w-auto gap-2">
+              <Cartographer onApplySuggestions={handleCartographerSuggestions} />
+              <button
+                type="button"
+                className="h-10 flex-1 md:flex-none rounded-lg bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed relative"
+                onClick={() => fetchJobs(1)}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Searching...
+                  </span>
+                ) : (
+                  "Search"
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Filter Pills */}

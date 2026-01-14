@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { addTrackedJob } from "@/lib/firestore";
 
 type Job = {
   id: string;
@@ -149,17 +150,39 @@ export function JobDetailPanel({ job, onAddToApply, onAddToApplied, onClose, isM
   const isNew = isNewJob(job.createdAt);
   const formattedDescription = formatDescription(job.descriptionText);
 
-  const handleToggleToApply = () => {
-    setAddedToApply(!addedToApply);
-    if (onAddToApply && !addedToApply) {
-      onAddToApply(job.id);
+  const handleToggleToApply = async () => {
+    if (!user) return;
+    
+    if (!addedToApply) {
+      try {
+        await addTrackedJob({ userId: user.uid, jobId: job.id, status: "to_apply" });
+        setAddedToApply(true);
+        alert('Job added to "To Apply"');
+        if (onAddToApply) onAddToApply(job.id);
+      } catch (error) {
+        console.error("Error adding job:", error);
+        alert("Failed to add job. Please try again.");
+      }
+    } else {
+      setAddedToApply(false);
     }
   };
 
-  const handleToggleApplied = () => {
-    setAddedToApplied(!addedToApplied);
-    if (onAddToApplied && !addedToApplied) {
-      onAddToApplied(job.id);
+  const handleToggleApplied = async () => {
+    if (!user) return;
+    
+    if (!addedToApplied) {
+      try {
+        await addTrackedJob({ userId: user.uid, jobId: job.id, status: "applied" });
+        setAddedToApplied(true);
+        alert('Job marked as "Applied"');
+        if (onAddToApplied) onAddToApplied(job.id);
+      } catch (error) {
+        console.error("Error adding job:", error);
+        alert("Failed to add job. Please try again.");
+      }
+    } else {
+      setAddedToApplied(false);
     }
   };
 

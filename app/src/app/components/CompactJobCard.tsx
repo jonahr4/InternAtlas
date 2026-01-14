@@ -110,6 +110,17 @@ export function CompactJobCard({
               <span className="uppercase text-[10px] font-medium">{job.sourcePlatform}</span>
               <span className="text-slate-300 dark:text-slate-600">•</span>
               <span>Posted {formatDate(job.createdAt)}</span>
+              <span className="text-slate-300 dark:text-slate-600">•</span>
+              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                isClosed 
+                  ? "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400" 
+                  : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
+              }`}>
+                <span className={`h-1 w-1 rounded-full ${
+                  isClosed ? "bg-slate-500" : "bg-emerald-500"
+                }`} />
+                {isClosed ? "Closed" : "Open"}
+              </span>
             </div>
           </div>
 

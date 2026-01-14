@@ -14,6 +14,7 @@ import {
   deleteCustomTable,
   markTableAsSeen,
   updateNewJobCount,
+  resetTableSeen,
   addTrackedJob,
   bulkAddTrackedJobs,
   type CustomTable,
@@ -354,16 +355,20 @@ export default function CustomTablesPage() {
     if (!selectedTable) return;
 
     try {
-      await markTableAsSeen(selectedTable.id);
+      await resetTableSeen(selectedTable.id);
       setCustomTables(prev =>
         prev.map(t =>
           t.id === selectedTable.id
-            ? { ...t, lastSeenAt: new Date(), newJobCount: 0 }
+            ? { ...t, lastSeenAt: null }
             : t
         )
       );
       setIsLocked(false);
       setUnlockModalOpen(false);
+      // Reload jobs to recalculate which are new
+      if (selectedTable) {
+        await loadJobs();
+      }
     } catch (error) {
       console.error("Error unlocking table:", error);
     }
@@ -1079,7 +1084,29 @@ export default function CustomTablesPage() {
         {/* Right Pane - Job Details (hidden on mobile) */}
         <div className="hidden md:flex flex-1 overflow-hidden">
           {selectedJob ? (
-            <JobDetailPanel job={selectedJob} />
+            <JobDetailPanel 
+              job={selectedJob} 
+              onAddToApply={async (jobId) => {
+                if (!user) return;
+                try {
+                  await addTrackedJob({ userId: user.uid, jobId, status: "to_apply" });
+                  alert('Job added to "To Apply"');
+                } catch (error) {
+                  console.error("Error adding job:", error);
+                  alert("Failed to add job. Please try again.");
+                }
+              }}
+              onAddToApplied={async (jobId) => {
+                if (!user) return;
+                try {
+                  await addTrackedJob({ userId: user.uid, jobId, status: "applied" });
+                  alert('Job marked as "Applied"');
+                } catch (error) {
+                  console.error("Error adding job:", error);
+                  alert("Failed to add job. Please try again.");
+                }
+              }}
+            />
           ) : (
             <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-500">
               <div className="text-center">
@@ -1105,6 +1132,26 @@ export default function CustomTablesPage() {
               job={selectedJob}
               onClose={() => setSelectedJobId(null)}
               isMobile
+              onAddToApply={async (jobId) => {
+                if (!user) return;
+                try {
+                  await addTrackedJob({ userId: user.uid, jobId, status: "to_apply" });
+                  alert('Job added to "To Apply"');
+                } catch (error) {
+                  console.error("Error adding job:", error);
+                  alert("Failed to add job. Please try again.");
+                }
+              }}
+              onAddToApplied={async (jobId) => {
+                if (!user) return;
+                try {
+                  await addTrackedJob({ userId: user.uid, jobId, status: "applied" });
+                  alert('Job marked as "Applied"');
+                } catch (error) {
+                  console.error("Error adding job:", error);
+                  alert("Failed to add job. Please try again.");
+                }
+              }}
             />
           </div>
         </>
@@ -1176,11 +1223,11 @@ export default function CustomTablesPage() {
               </div>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2 text-center">Unlock Filters?</h3>
               <p className="text-slate-600 dark:text-slate-400 mb-6 text-center">
-                Unlocking will mark all jobs as seen and reset the "NEW" count. You'll be able to modify the search filters after unlocking.
+                Unlocking will mark all jobs as UNSEEN. You'll be able to modify the search filters after unlocking, and all new jobs will be marked as NEW again.
               </p>
               <div className="flex gap-3">
                 <button onClick={() => setUnlockModalOpen(false)} className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition">Cancel</button>
-                <button onClick={handleUnlock} className="flex-1 px-4 py-2 text-sm font-semibold bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition">Unlock & Reset</button>
+                <button onClick={handleUnlock} className="flex-1 px-4 py-2 text-sm font-semibold bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition">Yes, Unlock</button>
               </div>
             </div>
           </div>

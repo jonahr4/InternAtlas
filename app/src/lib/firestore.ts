@@ -141,6 +141,15 @@ export async function markTableAsSeen(tableId: string): Promise<void> {
   });
 }
 
+// Reset table to unseen (sets lastSeenAt to null so all jobs appear as new)
+export async function resetTableSeen(tableId: string): Promise<void> {
+  const docRef = doc(db, "customTables", tableId);
+  await updateDoc(docRef, {
+    lastSeenAt: null,
+    updatedAt: Timestamp.now(),
+  });
+}
+
 // Update new job count for a table
 export async function updateNewJobCount(tableId: string, count: number): Promise<void> {
   const docRef = doc(db, "customTables", tableId);

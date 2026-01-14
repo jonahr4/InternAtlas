@@ -9,6 +9,7 @@ import { JobDetailPanel, JobDetailSkeleton } from "./JobDetailPanel";
 import { TagInput } from "./TagInput";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthButton } from "./AuthButton";
+import { addTrackedJob, bulkAddTrackedJobs } from "@/lib/firestore";
 
 type Job = {
   id: string;
@@ -359,7 +360,7 @@ export default function JobSearch() {
     const cached = cacheRef.current.get(cacheKey);
     if (cached) {
       // Use cached data instantly
-      console.log(`⚡ Using cached page ${nextPage} (instant load)`);
+      console.log(`⚡ Page ${nextPage} loaded instantly from cache (0ms)`);
       setData(cached);
       setPage(nextState.page);
       setPageSize(nextState.pageSize);
@@ -385,10 +386,11 @@ export default function JobSearch() {
       return; // Skip loading - instant!
     }
 
+    // Not in cache, fetch from API
     setIsLoading(true);
     setError(null);
 
-    console.log(`📡 Fetching page ${nextPage} from API...`);
+    console.log(`📡 Page ${nextPage} not cached, fetching from API...`);
 
     try {
       if (!options.skipUrlUpdate) {
@@ -639,22 +641,72 @@ export default function JobSearch() {
     setSelectedJobs(new Set());
   };
 
-  const handleBulkAddToApply = () => {
-    console.log("Bulk add to 'To Apply':", Array.from(selectedJobs));
-    // TODO: Implement backend integration
+  const handleBulkAddToApply = async () => {
+    if (!user) {
+      alert("Please sign in to track jobs");
+      return;
+    }
+
+    try {
+      const jobIds = Array.from(selectedJobs);
+      await bulkAddTrackedJobs(user.uid, jobIds, "to_apply");
+
+      alert(`${jobIds.length} job(s) added to "To Apply"`);
+      setSelectedJobs(new Set());
+      setBulkMode(false);
+    } catch (error) {
+      console.error("Error adding jobs to To Apply:", error);
+      alert("Failed to add jobs. Please try again.");
+    }
   };
 
-  const handleBulkAddToApplied = () => {
-    console.log("Bulk add to 'Applied':", Array.from(selectedJobs));
-    // TODO: Implement backend integration
+  const handleBulkAddToApplied = async () => {
+    if (!user) {
+      alert("Please sign in to track jobs");
+      return;
+    }
+
+    try {
+      const jobIds = Array.from(selectedJobs);
+      await bulkAddTrackedJobs(user.uid, jobIds, "applied");
+
+      alert(`${jobIds.length} job(s) added to "Applied"`);
+      setSelectedJobs(new Set());
+      setBulkMode(false);
+    } catch (error) {
+      console.error("Error adding jobs to Applied:", error);
+      alert("Failed to add jobs. Please try again.");
+    }
   };
 
-  const handleAddToApply = (jobId: string) => {
-    console.log("Add to 'To Apply' board:", jobId);
+  const handleAddToApply = async (jobId: string) => {
+    if (!user) {
+      alert("Please sign in to track jobs");
+      return;
+    }
+
+    try {
+      await addTrackedJob({ userId: user.uid, jobId, status: "to_apply" });
+      alert("Job added to \"To Apply\"");
+    } catch (error) {
+      console.error("Error adding job to To Apply:", error);
+      alert("Failed to add job. Please try again.");
+    }
   };
 
-  const handleAddToApplied = (jobId: string) => {
-    console.log("Add to 'Applied' board:", jobId);
+  const handleAddToApplied = async (jobId: string) => {
+    if (!user) {
+      alert("Please sign in to track jobs");
+      return;
+    }
+
+    try {
+      await addTrackedJob({ userId: user.uid, jobId, status: "applied" });
+      alert("Job added to \"Applied\"");
+    } catch (error) {
+      console.error("Error adding job to Applied:", error);
+      alert("Failed to add job. Please try again.");
+    }
   };
 
   const handleJobClick = (job: Job, index: number) => {

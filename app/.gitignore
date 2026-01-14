@@ -48,3 +48,7 @@ next-env.d.ts
 /data/backups/companies-*.csv
 *.sql
 *.dump
+
+# Large data files
+/data/Job.csv
+Job.csv

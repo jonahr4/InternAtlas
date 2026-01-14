@@ -149,3 +149,156 @@ export async function updateNewJobCount(tableId: string, count: number): Promise
     updatedAt: Timestamp.now(),
   });
 }
+
+// ============================================================
+// APPLICATION TRACKING
+// ============================================================
+
+export interface TrackedJob {
+  id: string;
+  userId: string;
+  jobId: string; // ID from the Job table in Postgres
+  status: "to_apply" | "applied";
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateTrackedJobInput {
+  userId: string;
+  jobId: string;
+  status: "to_apply" | "applied";
+}
+
+// Convert Firestore document to TrackedJob
+function docToTrackedJob(docId: string, data: any): TrackedJob {
+  return {
+    id: docId,
+    userId: data.userId,
+    jobId: data.jobId,
+    status: data.status,
+    createdAt: data.createdAt?.toDate() || new Date(),
+    updatedAt: data.updatedAt?.toDate() || new Date(),
+  };
+}
+
+// Get all tracked jobs for a user
+export async function getUserTrackedJobs(userId: string): Promise<TrackedJob[]> {
+  try {
+    const q = query(
+      collection(db, "trackedJobs"),
+      where("userId", "==", userId),
+      orderBy("createdAt", "desc")
+    );
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => docToTrackedJob(doc.id, doc.data()));
+  } catch (error: any) {
+    if (error?.code === 'failed-precondition' || error?.message?.includes('index')) {
+      console.warn('Firestore index not created yet. Using simple query. Create index in Firebase Console for better performance.');
+      const q = query(
+        collection(db, "trackedJobs"),
+        where("userId", "==", userId)
+      );
+      const snapshot = await getDocs(q);
+      const jobs = snapshot.docs.map(doc => docToTrackedJob(doc.id, doc.data()));
+      return jobs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    }
+    throw error;
+  }
+}
+
+// Get tracked jobs by status
+export async function getUserTrackedJobsByStatus(
+  userId: string,
+  status: "to_apply" | "applied"
+): Promise<TrackedJob[]> {
+  try {
+    const q = query(
+      collection(db, "trackedJobs"),
+      where("userId", "==", userId),
+      where("status", "==", status),
+      orderBy("createdAt", "desc")
+    );
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => docToTrackedJob(doc.id, doc.data()));
+  } catch (error: any) {
+    if (error?.code === 'failed-precondition' || error?.message?.includes('index')) {
+      console.warn('Firestore index not created yet. Using simple query.');
+      const q = query(
+        collection(db, "trackedJobs"),
+        where("userId", "==", userId),
+        where("status", "==", status)
+      );
+      const snapshot = await getDocs(q);
+      const jobs = snapshot.docs.map(doc => docToTrackedJob(doc.id, doc.data()));
+      return jobs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    }
+    throw error;
+  }
+}
+
+// Add a job to tracking
+export async function addTrackedJob(input: CreateTrackedJobInput): Promise<string> {
+  const now = Timestamp.now();
+  
+  // Check if job already exists for this user
+  const existingQuery = query(
+    collection(db, "trackedJobs"),
+    where("userId", "==", input.userId),
+    where("jobId", "==", input.jobId)
+  );
+  
+  const existingSnapshot = await getDocs(existingQuery);
+  
+  if (!existingSnapshot.empty) {
+    // Update existing entry
+    const existingDoc = existingSnapshot.docs[0];
+    await updateDoc(doc(db, "trackedJobs", existingDoc.id), {
+      status: input.status,
+      updatedAt: now,
+    });
+    return existingDoc.id;
+  }
+  
+  // Create new entry
+  const docRef = await addDoc(collection(db, "trackedJobs"), {
+    userId: input.userId,
+    jobId: input.jobId,
+    status: input.status,
+    createdAt: now,
+    updatedAt: now,
+  });
+  
+  return docRef.id;
+}
+
+// Update tracked job status
+export async function updateTrackedJobStatus(
+  trackedJobId: string,
+  status: "to_apply" | "applied"
+): Promise<void> {
+  const docRef = doc(db, "trackedJobs", trackedJobId);
+  await updateDoc(docRef, {
+    status,
+    updatedAt: Timestamp.now(),
+  });
+}
+
+// Delete a tracked job
+export async function deleteTrackedJob(trackedJobId: string): Promise<void> {
+  const docRef = doc(db, "trackedJobs", trackedJobId);
+  await deleteDoc(docRef);
+}
+
+// Bulk add tracked jobs
+export async function bulkAddTrackedJobs(
+  userId: string,
+  jobIds: string[],
+  status: "to_apply" | "applied"
+): Promise<void> {
+  const promises = jobIds.map(jobId =>
+    addTrackedJob({ userId, jobId, status })
+  );
+  await Promise.all(promises);
+}

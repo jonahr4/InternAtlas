@@ -857,7 +857,7 @@ export default function JobSearch() {
                     }
                     setTitleTags(newTags);
                   }}
-                  placeholder="Job titles (Enter to add)"
+                  placeholder='Job titles (Press "Enter" to add)'
                   className="flex-1 md:flex-[2] min-w-[180px]"
                 />
               </div>
@@ -886,14 +886,13 @@ export default function JobSearch() {
                     }
                     setLocationTags(newTags);
                   }}
-                  placeholder="Locations (Enter to add)"
+                  placeholder='Locations (Press "Enter" to add)'
                   className="flex-1 min-w-[180px]"
                   icon="location"
                 />
               </div>
             </div>
             <div className="flex w-full md:w-auto gap-2">
-              <Cartographer onApplySuggestions={handleCartographerSuggestions} />
               <button
                 type="button"
                 className="h-10 flex-1 md:flex-none rounded-lg bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed relative"
@@ -912,6 +911,7 @@ export default function JobSearch() {
                   "Search"
                 )}
               </button>
+              <Cartographer onApplySuggestions={handleCartographerSuggestions} />
             </div>
           </div>
 

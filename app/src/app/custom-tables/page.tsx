@@ -7,6 +7,7 @@ import { TagInput } from "../components/TagInput";
 import { JobCard, JobCardSkeleton } from "../components/JobCard";
 import { JobDetailPanel } from "../components/JobDetailPanel";
 import { TopNav } from "../components/TopNav";
+import { Cartographer } from "../components/Cartographer";
 import {
   getUserCustomTables,
   createCustomTable,
@@ -72,6 +73,7 @@ export default function CustomTablesPage() {
   const [editedName, setEditedName] = useState("");
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [createTab, setCreateTab] = useState<"manual" | "ai">("manual");
   
   const [customTables, setCustomTables] = useState<CustomTable[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
@@ -1162,19 +1164,104 @@ export default function CustomTablesPage() {
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
               <div className="p-6">
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">Create Custom Table</h2>
+                
+                {/* Tab Switcher */}
+                <div className="flex gap-2 mb-6 border-b border-slate-200 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setCreateTab("manual")}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
+                      createTab === "manual"
+                        ? "border-teal-600 text-teal-600 dark:text-teal-400"
+                        : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    Manual
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreateTab("ai")}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
+                      createTab === "ai"
+                        ? "border-teal-600 text-teal-600 dark:text-teal-400"
+                        : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    Cartographer (AI)
+                  </button>
+                </div>
+
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Table Name</label>
                   <input type="text" value={newTableName} onChange={(e) => setNewTableName(e.target.value)} placeholder="e.g., MA Software Interns"
                     className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white" />
                 </div>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Job Title Keywords (optional)</label>
-                  <TagInput tags={newTitleTags} onTagsChange={setNewTitleTags} placeholder="Type keyword, press Enter to add..." icon="search" />
-                </div>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Location Keywords (optional)</label>
-                  <TagInput tags={newLocationTags} onTagsChange={setNewLocationTags} placeholder="Type location, press Enter to add..." icon="location" />
-                </div>
+
+                {createTab === "manual" ? (
+                  <>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Job Title Keywords (optional)</label>
+                      <TagInput tags={newTitleTags} onTagsChange={setNewTitleTags} placeholder='Type keyword, Press "Enter" to add...' icon="search" />
+                    </div>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Location Keywords (optional)</label>
+                      <TagInput tags={newLocationTags} onTagsChange={setNewLocationTags} placeholder='Type location, Press "Enter" to add...' icon="location" />
+                    </div>
+                  </>
+                ) : (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Use AI to generate search terms</label>
+                    <Cartographer 
+                      onApplySuggestions={(titleKeywords: string[], locationKeywords: string[]) => {
+                        setNewTitleTags(titleKeywords);
+                        setNewLocationTags(locationKeywords);
+                      }} 
+                    />
+                    {(newTitleTags.length > 0 || newLocationTags.length > 0) && (
+                      <div className="mt-4 space-y-3">
+                        {newTitleTags.length > 0 && (
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Title Keywords</label>
+                            <div className="flex flex-wrap gap-2">
+                              {newTitleTags.map((tag, idx) => (
+                                <span key={idx} className="inline-flex items-center gap-1 px-2 py-1 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-xs rounded-md">
+                                  {tag}
+                                  <button
+                                    type="button"
+                                    onClick={() => setNewTitleTags(newTitleTags.filter((_, i) => i !== idx))}
+                                    className="hover:text-teal-900 dark:hover:text-teal-100"
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {newLocationTags.length > 0 && (
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Location Keywords</label>
+                            <div className="flex flex-wrap gap-2">
+                              {newLocationTags.map((tag, idx) => (
+                                <span key={idx} className="inline-flex items-center gap-1 px-2 py-1 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-xs rounded-md">
+                                  {tag}
+                                  <button
+                                    type="button"
+                                    onClick={() => setNewLocationTags(newLocationTags.filter((_, i) => i !== idx))}
+                                    className="hover:text-teal-900 dark:hover:text-teal-100"
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Company Name (optional)</label>
                   <input type="text" value={newCompanyFilter} onChange={(e) => setNewCompanyFilter(e.target.value)} placeholder="e.g., Google"

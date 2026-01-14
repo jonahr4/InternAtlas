@@ -18,6 +18,7 @@ import {
   resetTableSeen,
   addTrackedJob,
   bulkAddTrackedJobs,
+  getUserTrackedJobs,
   type CustomTable,
 } from "@/lib/firestore";
 
@@ -98,6 +99,9 @@ export default function CustomTablesPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   
+  // Tracked jobs (for showing save status)
+  const [trackedJobs, setTrackedJobs] = useState<Map<string, 'to_apply' | 'applied'>>(new Map());
+  
   // Status filter and bulk select
   const [statusFilter, setStatusFilter] = useState<"open" | "closed" | "both">("both");
   const [bulkMode, setBulkMode] = useState(false);
@@ -145,6 +149,23 @@ export default function CustomTablesPage() {
     
     return () => clearTimeout(timeoutId);
   }, [user]);
+
+  // Fetch tracked jobs when user logs in
+  useEffect(() => {
+    if (user?.uid) {
+      getUserTrackedJobs(user.uid).then(jobs => {
+        const map = new Map<string, 'to_apply' | 'applied'>();
+        jobs.forEach(job => {
+          map.set(job.jobId, job.status);
+        });
+        setTrackedJobs(map);
+      }).catch(err => {
+        console.error('Failed to fetch tracked jobs:', err);
+      });
+    } else {
+      setTrackedJobs(new Map());
+    }
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!selectedTable) return;
@@ -308,6 +329,13 @@ export default function CustomTablesPage() {
       const jobIds = Array.from(selectedJobs);
       await bulkAddTrackedJobs(user.uid, jobIds, "to_apply");
 
+      // Update local state
+      setTrackedJobs(prev => {
+        const newMap = new Map(prev);
+        jobIds.forEach(id => newMap.set(id, 'to_apply'));
+        return newMap;
+      });
+
       alert(`${jobIds.length} job(s) added to "To Apply"`);
       setSelectedJobs(new Set());
       setBulkMode(false);
@@ -326,6 +354,13 @@ export default function CustomTablesPage() {
     try {
       const jobIds = Array.from(selectedJobs);
       await bulkAddTrackedJobs(user.uid, jobIds, "applied");
+
+      // Update local state
+      setTrackedJobs(prev => {
+        const newMap = new Map(prev);
+        jobIds.forEach(id => newMap.set(id, 'applied'));
+        return newMap;
+      });
 
       alert(`${jobIds.length} job(s) added to "Applied"`);
       setSelectedJobs(new Set());
@@ -1042,6 +1077,7 @@ export default function CustomTablesPage() {
                   bulkMode={bulkMode}
                   isChecked={selectedJobs.has(job.id)}
                   onCheck={(checked) => handleJobCheck(job.id, checked)}
+                  savedStatus={trackedJobs.get(job.id)}
                 />
               ))
             )}
@@ -1090,6 +1126,7 @@ export default function CustomTablesPage() {
                 if (!user) return;
                 try {
                   await addTrackedJob({ userId: user.uid, jobId, status: "to_apply" });
+                  setTrackedJobs(prev => new Map(prev).set(jobId, 'to_apply'));
                   alert('Job added to "To Apply"');
                 } catch (error) {
                   console.error("Error adding job:", error);
@@ -1100,6 +1137,7 @@ export default function CustomTablesPage() {
                 if (!user) return;
                 try {
                   await addTrackedJob({ userId: user.uid, jobId, status: "applied" });
+                  setTrackedJobs(prev => new Map(prev).set(jobId, 'applied'));
                   alert('Job marked as "Applied"');
                 } catch (error) {
                   console.error("Error adding job:", error);
@@ -1136,6 +1174,7 @@ export default function CustomTablesPage() {
                 if (!user) return;
                 try {
                   await addTrackedJob({ userId: user.uid, jobId, status: "to_apply" });
+                  setTrackedJobs(prev => new Map(prev).set(jobId, 'to_apply'));
                   alert('Job added to "To Apply"');
                 } catch (error) {
                   console.error("Error adding job:", error);
@@ -1146,6 +1185,7 @@ export default function CustomTablesPage() {
                 if (!user) return;
                 try {
                   await addTrackedJob({ userId: user.uid, jobId, status: "applied" });
+                  setTrackedJobs(prev => new Map(prev).set(jobId, 'applied'));
                   alert('Job marked as "Applied"');
                 } catch (error) {
                   console.error("Error adding job:", error);

@@ -10,7 +10,7 @@ import { TagInput } from "./TagInput";
 import { Cartographer } from "./Cartographer";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthButton } from "./AuthButton";
-import { addTrackedJob, bulkAddTrackedJobs, createCustomTable } from "@/lib/firestore";
+import { addTrackedJob, bulkAddTrackedJobs, createCustomTable, getUserTrackedJobs } from "@/lib/firestore";
 
 type Job = {
   id: string;
@@ -218,8 +218,11 @@ export default function JobSearch() {
   
   // Save to Custom Table modal
   const [saveToTableModalOpen, setSaveToTableModalOpen] = useState(false);
-  const [newTableName, setNewTableName] = useState("");
+  const [newTableName, setNewTableName] = useState('');
   const [isCreatingTable, setIsCreatingTable] = useState(false);
+  
+  // Tracked jobs (for showing save status on job cards)
+  const [trackedJobs, setTrackedJobs] = useState<Map<string, 'to_apply' | 'applied'>>(new Map());
 
   // Initialize dark mode and listen for system preference changes
   useEffect(() => {
@@ -273,6 +276,23 @@ export default function JobSearch() {
   useEffect(() => {
     fetchLatestUpdatedAt();
   }, []);
+
+  // Fetch tracked jobs when user logs in
+  useEffect(() => {
+    if (user?.uid) {
+      getUserTrackedJobs(user.uid).then(jobs => {
+        const map = new Map<string, 'to_apply' | 'applied'>();
+        jobs.forEach(job => {
+          map.set(job.jobId, job.status);
+        });
+        setTrackedJobs(map);
+      }).catch(err => {
+        console.error('Failed to fetch tracked jobs:', err);
+      });
+    } else {
+      setTrackedJobs(new Map());
+    }
+  }, [user?.uid]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -687,31 +707,35 @@ export default function JobSearch() {
 
   const handleAddToApply = async (jobId: string) => {
     if (!user) {
-      alert("Please sign in to track jobs");
+      alert('Please sign in to track jobs');
       return;
     }
 
     try {
-      await addTrackedJob({ userId: user.uid, jobId, status: "to_apply" });
-      alert("Job added to \"To Apply\"");
+      await addTrackedJob({ userId: user.uid, jobId, status: 'to_apply' });
+      // Update local state immediately
+      setTrackedJobs(prev => new Map(prev).set(jobId, 'to_apply'));
+      alert('Job added to "To Apply"');
     } catch (error) {
-      console.error("Error adding job to To Apply:", error);
-      alert("Failed to add job. Please try again.");
+      console.error('Error adding job to To Apply:', error);
+      alert('Failed to add job. Please try again.');
     }
   };
 
   const handleAddToApplied = async (jobId: string) => {
     if (!user) {
-      alert("Please sign in to track jobs");
+      alert('Please sign in to track jobs');
       return;
     }
 
     try {
-      await addTrackedJob({ userId: user.uid, jobId, status: "applied" });
-      alert("Job added to \"Applied\"");
+      await addTrackedJob({ userId: user.uid, jobId, status: 'applied' });
+      // Update local state immediately
+      setTrackedJobs(prev => new Map(prev).set(jobId, 'applied'));
+      alert('Job added to "Applied"');
     } catch (error) {
-      console.error("Error adding job to Applied:", error);
-      alert("Failed to add job. Please try again.");
+      console.error('Error adding job to Applied:', error);
+      alert('Failed to add job. Please try again.');
     }
   };
 
@@ -1281,6 +1305,7 @@ export default function JobSearch() {
                   isChecked={selectedJobs.has(job.id)}
                   onCheck={(checked) => handleJobCheck(job.id, checked)}
                   index={index}
+                  savedStatus={trackedJobs.get(job.id)}
                 />
               ))
             )}

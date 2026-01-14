@@ -25,6 +25,7 @@ type JobCardProps = {
   onCheck?: (checked: boolean) => void;
   index?: number;
   showNewBadge?: boolean; // Override default NEW badge logic
+  savedStatus?: 'to_apply' | 'applied'; // Status from tracked jobs
 };
 
 function formatDate(dateString: string): string {
@@ -80,7 +81,8 @@ export function JobCard({
   isChecked = false, 
   onCheck,
   index = 0,
-  showNewBadge
+  showNewBadge,
+  savedStatus
 }: JobCardProps) {
   const isClosed = job.status === "CLOSED";
   // Use showNewBadge prop if provided, otherwise fall back to default logic
@@ -195,6 +197,20 @@ export function JobCard({
               <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 rounded">
                 {job.sourcePlatform}
               </span>
+              
+              {/* Saved Status Badge */}
+              {savedStatus && (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide rounded ring-1 ${
+                  savedStatus === "to_apply"
+                    ? "text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 ring-teal-200 dark:ring-teal-800"
+                    : "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 ring-emerald-200 dark:ring-emerald-800"
+                }`}>
+                  <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V7.414A2 2 0 0015.414 6L12 2.586A2 2 0 0010.586 2H6zm5 6a1 1 0 10-2 0v3.586l-1.293-1.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V8z" clipRule="evenodd" />
+                  </svg>
+                  Saved: {savedStatus === "to_apply" ? "To Apply" : "Applied"}
+                </span>
+              )}
             </div>
 
             {/* Location & Date */}

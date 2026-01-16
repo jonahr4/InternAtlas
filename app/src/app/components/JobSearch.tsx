@@ -10,7 +10,7 @@ import { TagInput } from "./TagInput";
 import { Cartographer } from "./Cartographer";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthButton } from "./AuthButton";
-import { addTrackedJob, bulkAddTrackedJobs, createCustomTable, getUserTrackedJobs } from "@/lib/firestore";
+import { addTrackedJob, removeTrackedJob, bulkAddTrackedJobs, createCustomTable, getUserTrackedJobs } from "@/lib/firestore";
 
 type Job = {
   id: string;
@@ -670,16 +670,11 @@ export default function JobSearch() {
   };
 
   const handleBulkAddToApply = async () => {
-    if (!user) {
-      alert("Please sign in to track jobs");
-      return;
-    }
+    if (!user) return;
 
     try {
       const jobIds = Array.from(selectedJobs);
       await bulkAddTrackedJobs(user.uid, jobIds, "to_apply");
-
-      alert(`${jobIds.length} job(s) added to "To Apply"`);
       setSelectedJobs(new Set());
       setBulkMode(false);
     } catch (error) {
@@ -689,16 +684,11 @@ export default function JobSearch() {
   };
 
   const handleBulkAddToApplied = async () => {
-    if (!user) {
-      alert("Please sign in to track jobs");
-      return;
-    }
+    if (!user) return;
 
     try {
       const jobIds = Array.from(selectedJobs);
       await bulkAddTrackedJobs(user.uid, jobIds, "applied");
-
-      alert(`${jobIds.length} job(s) added to "Applied"`);
       setSelectedJobs(new Set());
       setBulkMode(false);
     } catch (error) {
@@ -708,16 +698,11 @@ export default function JobSearch() {
   };
 
   const handleAddToApply = async (jobId: string) => {
-    if (!user) {
-      alert('Please sign in to track jobs');
-      return;
-    }
+    if (!user) return;
 
     try {
       await addTrackedJob({ userId: user.uid, jobId, status: 'to_apply' });
-      // Update local state immediately
       setTrackedJobs(prev => new Map(prev).set(jobId, 'to_apply'));
-      alert('Job added to "To Apply"');
     } catch (error) {
       console.error('Error adding job to To Apply:', error);
       alert('Failed to add job. Please try again.');
@@ -725,19 +710,30 @@ export default function JobSearch() {
   };
 
   const handleAddToApplied = async (jobId: string) => {
-    if (!user) {
-      alert('Please sign in to track jobs');
-      return;
-    }
+    if (!user) return;
 
     try {
       await addTrackedJob({ userId: user.uid, jobId, status: 'applied' });
-      // Update local state immediately
       setTrackedJobs(prev => new Map(prev).set(jobId, 'applied'));
-      alert('Job added to "Applied"');
     } catch (error) {
       console.error('Error adding job to Applied:', error);
       alert('Failed to add job. Please try again.');
+    }
+  };
+
+  const handleRemove = async (jobId: string) => {
+    if (!user) return;
+
+    try {
+      await removeTrackedJob(user.uid, jobId);
+      setTrackedJobs(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(jobId);
+        return newMap;
+      });
+    } catch (error) {
+      console.error('Error removing job:', error);
+      alert('Failed to remove job. Please try again.');
     }
   };
 
@@ -784,7 +780,6 @@ export default function JobSearch() {
 
       setSaveToTableModalOpen(false);
       setNewTableName("");
-      alert("Custom table created successfully!");
     } catch (error) {
       console.error("Error creating custom table:", error);
       alert("Failed to create custom table. Please try again.");
@@ -1369,10 +1364,12 @@ export default function JobSearch() {
           {isLoading && !selectedJob ? (
             <JobDetailSkeleton />
           ) : (
-            <JobDetailPanel 
+            <JobDetailPanel
               job={selectedJob}
               onAddToApply={handleAddToApply}
               onAddToApplied={handleAddToApplied}
+              onRemove={handleRemove}
+              savedStatus={selectedJob ? trackedJobs.get(selectedJob.id) : undefined}
             />
           )}
         </div>
@@ -1381,17 +1378,19 @@ export default function JobSearch() {
       {/* Mobile Detail Sheet */}
       {mobileDetailOpen && (
         <>
-          <div 
+          <div
             className="fixed inset-0 z-40 bg-black/50 menu-backdrop md:hidden"
             onClick={() => setMobileDetailOpen(false)}
           />
           <div className="fixed inset-x-0 bottom-0 z-50 md:hidden">
-            <JobDetailPanel 
+            <JobDetailPanel
               job={selectedJob}
               onAddToApply={handleAddToApply}
               onAddToApplied={handleAddToApplied}
+              onRemove={handleRemove}
               onClose={() => setMobileDetailOpen(false)}
               isMobile
+              savedStatus={selectedJob ? trackedJobs.get(selectedJob.id) : undefined}
             />
           </div>
         </>

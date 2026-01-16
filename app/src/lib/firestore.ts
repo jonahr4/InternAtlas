@@ -300,6 +300,21 @@ export async function deleteTrackedJob(trackedJobId: string): Promise<void> {
   await deleteDoc(docRef);
 }
 
+// Delete tracked job by userId and jobId
+export async function removeTrackedJob(userId: string, jobId: string): Promise<void> {
+  const q = query(
+    collection(db, "trackedJobs"),
+    where("userId", "==", userId),
+    where("jobId", "==", jobId)
+  );
+
+  const snapshot = await getDocs(q);
+
+  // Delete all matching docs (should only be one)
+  const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+  await Promise.all(deletePromises);
+}
+
 // Bulk add tracked jobs
 export async function bulkAddTrackedJobs(
   userId: string,

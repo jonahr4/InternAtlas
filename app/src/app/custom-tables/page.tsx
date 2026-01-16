@@ -17,6 +17,7 @@ import {
   updateNewJobCount,
   resetTableSeen,
   addTrackedJob,
+  removeTrackedJob,
   bulkAddTrackedJobs,
   getUserTrackedJobs,
   type CustomTable,
@@ -307,10 +308,7 @@ export default function CustomTablesPage() {
   };
 
   const handleBulkAddToApply = async () => {
-    if (!user) {
-      alert("Please sign in to track jobs");
-      return;
-    }
+    if (!user) return;
 
     try {
       const jobIds = Array.from(selectedJobs);
@@ -323,7 +321,6 @@ export default function CustomTablesPage() {
         return newMap;
       });
 
-      alert(`${jobIds.length} job(s) added to "To Apply"`);
       setSelectedJobs(new Set());
       setBulkMode(false);
     } catch (error) {
@@ -333,10 +330,7 @@ export default function CustomTablesPage() {
   };
 
   const handleBulkAddToApplied = async () => {
-    if (!user) {
-      alert("Please sign in to track jobs");
-      return;
-    }
+    if (!user) return;
 
     try {
       const jobIds = Array.from(selectedJobs);
@@ -349,7 +343,6 @@ export default function CustomTablesPage() {
         return newMap;
       });
 
-      alert(`${jobIds.length} job(s) added to "Applied"`);
       setSelectedJobs(new Set());
       setBulkMode(false);
     } catch (error) {
@@ -1078,14 +1071,13 @@ export default function CustomTablesPage() {
         {/* Right Pane - Job Details (hidden on mobile) */}
         <div className="hidden md:flex flex-1 overflow-hidden">
           {selectedJob ? (
-            <JobDetailPanel 
-              job={selectedJob} 
+            <JobDetailPanel
+              job={selectedJob}
               onAddToApply={async (jobId) => {
                 if (!user) return;
                 try {
                   await addTrackedJob({ userId: user.uid, jobId, status: "to_apply" });
                   setTrackedJobs(prev => new Map(prev).set(jobId, 'to_apply'));
-                  alert('Job added to "To Apply"');
                 } catch (error) {
                   console.error("Error adding job:", error);
                   alert("Failed to add job. Please try again.");
@@ -1096,12 +1088,26 @@ export default function CustomTablesPage() {
                 try {
                   await addTrackedJob({ userId: user.uid, jobId, status: "applied" });
                   setTrackedJobs(prev => new Map(prev).set(jobId, 'applied'));
-                  alert('Job marked as "Applied"');
                 } catch (error) {
                   console.error("Error adding job:", error);
                   alert("Failed to add job. Please try again.");
                 }
               }}
+              onRemove={async (jobId) => {
+                if (!user) return;
+                try {
+                  await removeTrackedJob(user.uid, jobId);
+                  setTrackedJobs(prev => {
+                    const newMap = new Map(prev);
+                    newMap.delete(jobId);
+                    return newMap;
+                  });
+                } catch (error) {
+                  console.error("Error removing job:", error);
+                  alert("Failed to remove job. Please try again.");
+                }
+              }}
+              savedStatus={trackedJobs.get(selectedJob.id)}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-500">
@@ -1124,7 +1130,7 @@ export default function CustomTablesPage() {
             onClick={() => setSelectedJobId(null)}
           />
           <div className="fixed inset-x-0 bottom-0 z-50 md:hidden">
-            <JobDetailPanel 
+            <JobDetailPanel
               job={selectedJob}
               onClose={() => setSelectedJobId(null)}
               isMobile
@@ -1133,7 +1139,6 @@ export default function CustomTablesPage() {
                 try {
                   await addTrackedJob({ userId: user.uid, jobId, status: "to_apply" });
                   setTrackedJobs(prev => new Map(prev).set(jobId, 'to_apply'));
-                  alert('Job added to "To Apply"');
                 } catch (error) {
                   console.error("Error adding job:", error);
                   alert("Failed to add job. Please try again.");
@@ -1144,12 +1149,26 @@ export default function CustomTablesPage() {
                 try {
                   await addTrackedJob({ userId: user.uid, jobId, status: "applied" });
                   setTrackedJobs(prev => new Map(prev).set(jobId, 'applied'));
-                  alert('Job marked as "Applied"');
                 } catch (error) {
                   console.error("Error adding job:", error);
                   alert("Failed to add job. Please try again.");
                 }
               }}
+              onRemove={async (jobId) => {
+                if (!user) return;
+                try {
+                  await removeTrackedJob(user.uid, jobId);
+                  setTrackedJobs(prev => {
+                    const newMap = new Map(prev);
+                    newMap.delete(jobId);
+                    return newMap;
+                  });
+                } catch (error) {
+                  console.error("Error removing job:", error);
+                  alert("Failed to remove job. Please try again.");
+                }
+              }}
+              savedStatus={trackedJobs.get(selectedJob.id)}
             />
           </div>
         </>

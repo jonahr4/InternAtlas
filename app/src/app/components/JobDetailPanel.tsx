@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { addTrackedJob } from "@/lib/firestore";
 
 type Job = {
   id: string;
@@ -25,8 +24,10 @@ type JobDetailPanelProps = {
   job: Job | null;
   onAddToApply?: (jobId: string) => void;
   onAddToApplied?: (jobId: string) => void;
+  onRemove?: (jobId: string) => void;
   onClose?: () => void;
   isMobile?: boolean;
+  savedStatus?: 'to_apply' | 'applied';
 };
 
 function formatDate(dateString: string): string {
@@ -110,16 +111,12 @@ function formatDescription(input: string | null): string {
   return text || "No description available for this position.";
 }
 
-export function JobDetailPanel({ job, onAddToApply, onAddToApplied, onClose, isMobile = false }: JobDetailPanelProps) {
+export function JobDetailPanel({ job, onAddToApply, onAddToApplied, onRemove, onClose, isMobile = false, savedStatus }: JobDetailPanelProps) {
   const { user } = useAuth();
   const [saveDropdownOpen, setSaveDropdownOpen] = useState(false);
-  const [addedToApply, setAddedToApply] = useState(false);
-  const [addedToApplied, setAddedToApplied] = useState(false);
 
-  // Reset save states when job changes
+  // Reset dropdown when job changes
   useEffect(() => {
-    setAddedToApply(false);
-    setAddedToApplied(false);
     setSaveDropdownOpen(false);
   }, [job?.id]);
 
@@ -150,40 +147,30 @@ export function JobDetailPanel({ job, onAddToApply, onAddToApplied, onClose, isM
   const isNew = isNewJob(job.createdAt);
   const formattedDescription = formatDescription(job.descriptionText);
 
-  const handleToggleToApply = async () => {
+  const handleToggleToApply = () => {
     if (!user) return;
-    
-    if (!addedToApply) {
-      try {
-        await addTrackedJob({ userId: user.uid, jobId: job.id, status: "to_apply" });
-        setAddedToApply(true);
-        alert('Job added to "To Apply"');
-        if (onAddToApply) onAddToApply(job.id);
-      } catch (error) {
-        console.error("Error adding job:", error);
-        alert("Failed to add job. Please try again.");
-      }
+
+    if (savedStatus === 'to_apply') {
+      // Already saved as to_apply, remove it
+      if (onRemove) onRemove(job.id);
     } else {
-      setAddedToApply(false);
+      // Add to to_apply list
+      if (onAddToApply) onAddToApply(job.id);
     }
+    setSaveDropdownOpen(false);
   };
 
-  const handleToggleApplied = async () => {
+  const handleToggleApplied = () => {
     if (!user) return;
-    
-    if (!addedToApplied) {
-      try {
-        await addTrackedJob({ userId: user.uid, jobId: job.id, status: "applied" });
-        setAddedToApplied(true);
-        alert('Job marked as "Applied"');
-        if (onAddToApplied) onAddToApplied(job.id);
-      } catch (error) {
-        console.error("Error adding job:", error);
-        alert("Failed to add job. Please try again.");
-      }
+
+    if (savedStatus === 'applied') {
+      // Already saved as applied, remove it
+      if (onRemove) onRemove(job.id);
     } else {
-      setAddedToApplied(false);
+      // Add to applied list
+      if (onAddToApplied) onAddToApplied(job.id);
     }
+    setSaveDropdownOpen(false);
   };
 
   const containerClass = isMobile 
@@ -295,12 +282,12 @@ export function JobDetailPanel({ job, onAddToApply, onAddToApplied, onClose, isM
                   type="button"
                   onClick={() => setSaveDropdownOpen(!saveDropdownOpen)}
                   className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium shadow-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-800 ${
-                    addedToApply || addedToApplied
+                    savedStatus
                       ? "border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 focus:ring-teal-500"
                       : "border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 focus:ring-slate-500"
                   }`}
                 >
-                  <svg className="h-4 w-4" fill={addedToApply || addedToApplied ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-4 w-4" fill={savedStatus ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
                   </svg>
                   Save
@@ -327,11 +314,11 @@ export function JobDetailPanel({ job, onAddToApply, onAddToApplied, onClose, isM
                       className="flex w-full items-center gap-3 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 transition hover:bg-slate-50 dark:hover:bg-slate-600"
                     >
                       <div className={`flex h-5 w-5 items-center justify-center rounded border ${
-                        addedToApply 
-                          ? "border-teal-500 bg-teal-500" 
+                        savedStatus === 'to_apply'
+                          ? "border-teal-500 bg-teal-500"
                           : "border-slate-300 dark:border-slate-500 bg-white dark:bg-slate-600"
                       }`}>
-                        {addedToApply && (
+                        {savedStatus === 'to_apply' && (
                           <svg className="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                           </svg>
@@ -342,18 +329,18 @@ export function JobDetailPanel({ job, onAddToApply, onAddToApplied, onClose, isM
                         <span className="text-xs text-slate-500 dark:text-slate-400">Jobs you want to apply to</span>
                       </div>
                     </button>
-                    
+
                     <button
                       type="button"
                       onClick={handleToggleApplied}
                       className="flex w-full items-center gap-3 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 transition hover:bg-slate-50 dark:hover:bg-slate-600"
                     >
                       <div className={`flex h-5 w-5 items-center justify-center rounded border ${
-                        addedToApplied 
-                          ? "border-teal-500 bg-teal-500" 
+                        savedStatus === 'applied'
+                          ? "border-teal-500 bg-teal-500"
                           : "border-slate-300 dark:border-slate-500 bg-white dark:bg-slate-600"
                       }`}>
-                        {addedToApplied && (
+                        {savedStatus === 'applied' && (
                           <svg className="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                           </svg>

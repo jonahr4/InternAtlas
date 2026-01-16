@@ -27,6 +27,8 @@ enum SourcePlatform {
   WORKDAY
   ICIMS
   SMARTRECRUITERS
+  TALEO
+  WORKABLE
   CUSTOM
 }
 

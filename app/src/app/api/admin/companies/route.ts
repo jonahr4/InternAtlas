@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 type RequestBody = {
   urls?: string;
   method?: "google" | "html";
-  ats?: "GREENHOUSE" | "LEVER" | "WORKDAY" | "ICIMS" | "SMARTRECRUITERS" | "CUSTOM";
+  ats?: "GREENHOUSE" | "LEVER" | "WORKDAY" | "ICIMS" | "SMARTRECRUITERS" | "TALEO" | "WORKABLE" | "CUSTOM";
 };
 
 function extractGreenhouseSlugs(input: string): string[] {
@@ -285,6 +285,102 @@ function extractSmartRecruitersBoards(input: string): { name: string; boardUrl: 
   }));
 }
 
+function extractTaleoBoards(input: string): { name: string; boardUrl: string }[] {
+  const normalizedInput = input.replace(/&amp;/g, "&");
+  const urlMatches = normalizedInput.match(/https?:\/\/[^\s]+/g) ?? [];
+  const boards = new Map<string, string>();
+
+  for (const rawUrl of urlMatches) {
+    try {
+      // Decode URL-encoded characters first
+      let cleanUrl = rawUrl;
+      try {
+        cleanUrl = decodeURIComponent(rawUrl);
+      } catch {
+        // If decode fails, use original
+      }
+      // Clean up Google search artifacts and fragments
+      cleanUrl = cleanUrl
+        .split('"')[0]
+        .split("'")[0]
+        .split(">")[0]
+        .split("&sa=")[0]
+        .split("&ved=")[0]
+        .split("&utm")[0]
+        .split("#")[0]
+        .split(":~:")[0]  // Google text fragments
+        .split("?")[0];   // Remove query params for cleaner parsing
+
+      const url = new URL(cleanUrl);
+      if (!url.hostname.endsWith("taleo.net")) {
+        continue;
+      }
+      // URL pattern: https://aa270.taleo.net/careersection/ex/jobdetail.ftl?job=826632
+      // Board URL:   https://aa270.taleo.net/careersection/ex/jobsearch.ftl
+      const subdomain = url.hostname.split(".")[0];
+      const parts = url.pathname.split("/").filter(Boolean);
+      // Expect: ["careersection", "ex", "jobdetail.ftl"] or similar
+      if (parts.length >= 2 && parts[0] === "careersection") {
+        const sectionName = parts[1]; // e.g., "ex", "2", "in"
+        // Validate section name - should be short alphanumeric, not a file or encoded junk
+        if (!/^[a-zA-Z0-9_-]{1,20}$/.test(sectionName)) {
+          continue;
+        }
+        const boardUrl = `${url.protocol}//${url.hostname}/careersection/${sectionName}/jobsearch.ftl`;
+        boards.set(subdomain, boardUrl);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return Array.from(boards.entries()).map(([name, boardUrl]) => ({
+    name: nameFromSlug(name),
+    boardUrl,
+  }));
+}
+
+function extractWorkableBoards(input: string): { name: string; boardUrl: string }[] {
+  const normalizedInput = input.replace(/&amp;/g, "&");
+  const urlMatches = normalizedInput.match(/https?:\/\/[^\s]+/g) ?? [];
+  const boards = new Map<string, string>();
+
+  for (const rawUrl of urlMatches) {
+    try {
+      const cleanUrl = rawUrl
+        .split('"')[0]
+        .split("'")[0]
+        .split(">")[0]
+        .split("&sa=")[0]
+        .split("&ved=")[0]
+        .split("#")[0];
+      const url = new URL(cleanUrl);
+      if (url.hostname !== "apply.workable.com") {
+        continue;
+      }
+      // URL pattern: https://apply.workable.com/k1x/j/2B194B6B0E/
+      // Board URL:   https://apply.workable.com/k1x/
+      const parts = url.pathname.split("/").filter(Boolean);
+      if (parts.length >= 1) {
+        const companySlug = parts[0];
+        // Skip if it's a generic path segment
+        if (companySlug === "j" || companySlug === "jobs" || companySlug === "careers" || companySlug === "api") {
+          continue;
+        }
+        const boardUrl = `https://apply.workable.com/${companySlug}/`;
+        boards.set(companySlug, boardUrl);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return Array.from(boards.entries()).map(([name, boardUrl]) => ({
+    name: nameFromSlug(name),
+    boardUrl,
+  }));
+}
+
 function nameFromSlug(slug: string): string {
   return slug
     .replace(/[-_]+/g, " ")
@@ -315,6 +411,8 @@ export async function POST(request: Request) {
   const workdayBoards = ats === "WORKDAY" ? extractWorkdayBoards(input) : [];
   const icimsBoards = ats === "ICIMS" ? extractIcimsBoards(input) : [];
   const smartRecruitersBoards = ats === "SMARTRECRUITERS" ? extractSmartRecruitersBoards(input) : [];
+  const taleoBoards = ats === "TALEO" ? extractTaleoBoards(input) : [];
+  const workableBoards = ats === "WORKABLE" ? extractWorkableBoards(input) : [];
   let added = 0;
   let updated = 0;
   let skipped = 0;
@@ -328,6 +426,10 @@ export async function POST(request: Request) {
       ? icimsBoards
       : ats === "SMARTRECRUITERS"
       ? smartRecruitersBoards
+      : ats === "TALEO"
+      ? taleoBoards
+      : ats === "WORKABLE"
+      ? workableBoards
       : slugs.map((slug) => ({
           name: nameFromSlug(slug),
           boardUrl:

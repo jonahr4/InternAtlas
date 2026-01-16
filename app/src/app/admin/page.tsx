@@ -275,6 +275,8 @@ export default function AdminPage() {
               <option value="WORKDAY">Workday</option>
               <option value="ICIMS">iCIMS</option>
               <option value="SMARTRECRUITERS">SmartRecruiters</option>
+              <option value="TALEO">Taleo</option>
+              <option value="WORKABLE">Workable</option>
               <option value="CUSTOM">Custom (to be implemented)</option>
             </select>
           </label>
@@ -350,6 +352,19 @@ export default function AdminPage() {
                     {`site:jobs.smartrecruiters.com "${roleB}" ${location}`}
                   </div>
                 </>
+              ) : ats === "TALEO" ? (
+                <>
+                  <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
+                    {`site:taleo.net ${location} intext:"apply" (intext:"${roleA}" OR intext:"${roleB}")`}
+                  </div>
+                  <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
+                    {`site:taleo.net "careersection" (intext:"${roleA}" OR intext:"${roleB}")`}
+                  </div>
+                </>
+              ) : ats === "WORKABLE" ? (
+                <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">
+                  {`site:apply.workable.com ${location} intext:"apply" (intext:"${roleA}" OR intext:"${roleB}")`}
+                </div>
               ) : (
                 <>
                   <div className="break-words rounded border border-zinc-200 bg-white p-3 font-mono text-xs">

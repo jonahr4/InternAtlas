@@ -60,6 +60,7 @@ const ATS_PLATFORMS = [
   { value: "LEVER", label: "Lever" },
   { value: "WORKDAY", label: "Workday" },
   { value: "ICIMS", label: "iCIMS" },
+  { value: "SMARTRECRUITERS", label: "SmartRecruiters" },
 ] as const;
 
 type QueryState = {
@@ -769,7 +770,7 @@ export default function JobSearch() {
   // Handle creating custom table from current search
   const handleCreateCustomTable = async () => {
     if (!user || !newTableName.trim()) return;
-    
+
     setIsCreatingTable(true);
     try {
       await createCustomTable({
@@ -778,9 +779,9 @@ export default function JobSearch() {
         titleKeywords: titleTags,
         locationKeywords: locationTags,
         companyFilter: companyFilter,
-        selectedPlatforms: selectedPlatforms,
+        selectedPlatforms: [], // Always use all platforms for scalability
       });
-      
+
       setSaveToTableModalOpen(false);
       setNewTableName("");
       alert("Custom table created successfully!");
@@ -1622,18 +1623,10 @@ export default function JobSearch() {
                   </div>
                 )}
 
-                {selectedPlatforms.length > 0 && (
-                  <div className="mb-3">
-                    <span className="text-xs text-slate-500 dark:text-slate-400">Platforms:</span>
-                    <div className="flex flex-wrap gap-2 mt-1">
-                      {selectedPlatforms.map((platform, i) => (
-                        <span key={i} className="inline-flex items-center px-2 py-1 rounded-md bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 text-sm">
-                          {platform}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <div className="mb-3">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Note:</span>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Custom tables automatically search across all ATS platforms for maximum coverage.</p>
+                </div>
               </div>
 
               {/* Modal Actions */}

@@ -911,6 +911,11 @@ async function fetchSmartRecruitersJobs(boardUrl: string, debug = false): Promis
     }
   }
 
+  // Validate we got all expected jobs to prevent false closures
+  if (allJobs.length !== totalFound) {
+    throw new Error(`SmartRecruiters data incomplete: expected ${totalFound} jobs but got ${allJobs.length}. Batch failures may have occurred.`);
+  }
+
   return allJobs;
 }
 

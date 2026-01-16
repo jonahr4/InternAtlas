@@ -38,13 +38,6 @@ type Job = {
   };
 };
 
-const ATS_PLATFORMS = [
-  { value: "GREENHOUSE", label: "Greenhouse" },
-  { value: "LEVER", label: "Lever" },
-  { value: "WORKDAY", label: "Workday" },
-  { value: "ICIMS", label: "iCIMS" },
-] as const;
-
 type SortOption = {
   label: string;
   sort: string;
@@ -84,10 +77,7 @@ export default function CustomTablesPage() {
   const [newTitleTags, setNewTitleTags] = useState<string[]>([]);
   const [newLocationTags, setNewLocationTags] = useState<string[]>([]);
   const [newCompanyFilter, setNewCompanyFilter] = useState("");
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(
-    ATS_PLATFORMS.map(p => p.value)
-  );
-  
+
   const [jobs, setJobs] = useState<Job[]>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -185,10 +175,8 @@ export default function CustomTablesPage() {
         if (selectedTable.companyFilter.trim()) {
           params.set("companyName", selectedTable.companyFilter.trim());
         }
-        if (selectedTable.selectedPlatforms.length > 0) {
-          params.set("platforms", selectedTable.selectedPlatforms.join(","));
-        }
-        
+        // Note: Custom tables always query ALL ATS platforms for scalability
+
         // Apply search within results
         if (searchQuery.trim()) {
           params.set("search", searchQuery.trim());
@@ -277,7 +265,7 @@ export default function CustomTablesPage() {
         titleKeywords: newTitleTags,
         locationKeywords: newLocationTags,
         companyFilter: newCompanyFilter.trim(),
-        selectedPlatforms,
+        selectedPlatforms: [], // Always use all platforms
       });
 
       const tables = await getUserCustomTables(user.uid);
@@ -288,7 +276,6 @@ export default function CustomTablesPage() {
       setNewTitleTags([]);
       setNewLocationTags([]);
       setNewCompanyFilter("");
-      setSelectedPlatforms(ATS_PLATFORMS.map(p => p.value));
       
       // Keep loading state for a moment to show success
       setTimeout(() => {
@@ -613,34 +600,6 @@ export default function CustomTablesPage() {
                     />
                   </div>
 
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                      Job Platforms
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {ATS_PLATFORMS.map((platform) => (
-                        <button
-                          key={platform.value}
-                          type="button"
-                          onClick={() => {
-                            setSelectedPlatforms(prev =>
-                              prev.includes(platform.value)
-                                ? prev.filter(p => p !== platform.value)
-                                : [...prev, platform.value]
-                            );
-                          }}
-                          className={`px-3 py-1.5 text-sm rounded-lg border transition ${
-                            selectedPlatforms.includes(platform.value)
-                              ? "bg-teal-50 dark:bg-teal-900/30 border-teal-500 dark:border-teal-600 text-teal-700 dark:text-teal-300"
-                              : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300"
-                          }`}
-                        >
-                          {platform.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
                   <div className="flex gap-3 justify-end">
                     <button
                       onClick={() => setCreateModalOpen(false)}
@@ -836,7 +795,6 @@ export default function CustomTablesPage() {
                         {selectedTable.titleKeywords.length > 0 && <div><strong>Title:</strong> {selectedTable.titleKeywords.join(", ")}</div>}
                         {selectedTable.locationKeywords.length > 0 && <div><strong>Location:</strong> {selectedTable.locationKeywords.join(", ")}</div>}
                         {selectedTable.companyFilter && <div><strong>Company:</strong> {selectedTable.companyFilter}</div>}
-                        {selectedTable.selectedPlatforms.length > 0 && <div><strong>Platforms:</strong> {selectedTable.selectedPlatforms.join(", ")}</div>}
                         {selectedTable.titleKeywords.length === 0 && selectedTable.locationKeywords.length === 0 && !selectedTable.companyFilter && (
                           <div className="text-slate-400">No filters - showing all jobs</div>
                         )}
@@ -1306,23 +1264,6 @@ export default function CustomTablesPage() {
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Company Name (optional)</label>
                   <input type="text" value={newCompanyFilter} onChange={(e) => setNewCompanyFilter(e.target.value)} placeholder="e.g., Google"
                     className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white" />
-                </div>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Job Platforms</label>
-                  <div className="flex flex-wrap gap-2">
-                    {ATS_PLATFORMS.map((platform) => (
-                      <button key={platform.value} type="button" onClick={() => {
-                        setSelectedPlatforms(prev => prev.includes(platform.value) ? prev.filter(p => p !== platform.value) : [...prev, platform.value]);
-                      }}
-                      className={`px-3 py-1.5 text-sm rounded-lg border transition ${
-                        selectedPlatforms.includes(platform.value)
-                          ? "bg-teal-50 dark:bg-teal-900/30 border-teal-500 dark:border-teal-600 text-teal-700 dark:text-teal-300"
-                          : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300"
-                      }`}>
-                        {platform.label}
-                      </button>
-                    ))}
-                  </div>
                 </div>
                 <div className="flex gap-3 justify-end">
                   <button onClick={() => setCreateModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition">Cancel</button>

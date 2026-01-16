@@ -9,8 +9,11 @@ export function TopNav() {
   const { user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // Sync with actual dark mode from DOM after mount
+    setMounted(true);
     const isDark = document.documentElement.classList.contains("dark");
     setDarkMode(isDark);
   }, []);
@@ -64,9 +67,9 @@ export function TopNav() {
               type="button"
               onClick={toggleDarkMode}
               className="hidden md:flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 transition hover:bg-slate-100 dark:hover:bg-slate-700"
-              title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+              suppressHydrationWarning
             >
-              {darkMode ? (
+              {mounted && darkMode ? (
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
@@ -194,8 +197,9 @@ export function TopNav() {
                     type="button"
                     onClick={toggleDarkMode}
                     className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-slate-100 dark:hover:bg-slate-700"
+                    suppressHydrationWarning
                   >
-                    {darkMode ? (
+                    {mounted && darkMode ? (
                       <svg className="h-4 w-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                       </svg>
@@ -205,7 +209,7 @@ export function TopNav() {
                       </svg>
                     )}
                     <span className="text-sm text-slate-700 dark:text-slate-200">
-                      {darkMode ? "Light Mode" : "Dark Mode"}
+                      {mounted && darkMode ? "Light Mode" : "Dark Mode"}
                     </span>
                   </button>
                   

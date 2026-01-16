@@ -10,7 +10,7 @@ import { TagInput } from "./TagInput";
 import { Cartographer } from "./Cartographer";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthButton } from "./AuthButton";
-import { addTrackedJob, removeTrackedJob, bulkAddTrackedJobs, createCustomTable, getUserTrackedJobs } from "@/lib/firestore";
+import { addTrackedJob, removeTrackedJob, bulkAddTrackedJobs, createCustomTable, getUserTrackedJobs, addStarredJob, removeStarredJob, getUserStarredJobs } from "@/lib/firestore";
 
 type Job = {
   id: string;
@@ -226,6 +226,9 @@ export default function JobSearch() {
   // Tracked jobs (for showing save status on job cards)
   const [trackedJobs, setTrackedJobs] = useState<Map<string, 'to_apply' | 'applied'>>(new Map());
 
+  // Starred jobs
+  const [starredJobs, setStarredJobs] = useState<Set<string>>(new Set());
+
   // Initialize dark mode and listen for system preference changes
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -293,6 +296,23 @@ export default function JobSearch() {
       });
     } else {
       setTrackedJobs(new Map());
+    }
+  }, [user?.uid]);
+
+  // Fetch starred jobs when user logs in
+  useEffect(() => {
+    if (user?.uid) {
+      getUserStarredJobs(user.uid).then(jobs => {
+        const set = new Set<string>();
+        jobs.forEach(job => {
+          set.add(job.jobId);
+        });
+        setStarredJobs(set);
+      }).catch(err => {
+        console.error('Failed to fetch starred jobs:', err);
+      });
+    } else {
+      setStarredJobs(new Set());
     }
   }, [user?.uid]);
 
@@ -734,6 +754,34 @@ export default function JobSearch() {
     } catch (error) {
       console.error('Error removing job:', error);
       alert('Failed to remove job. Please try again.');
+    }
+  };
+
+  const handleStar = async (jobId: string) => {
+    if (!user) return;
+
+    try {
+      await addStarredJob(user.uid, jobId);
+      setStarredJobs(prev => new Set(prev).add(jobId));
+    } catch (error) {
+      console.error('Error starring job:', error);
+      alert('Failed to star job. Please try again.');
+    }
+  };
+
+  const handleUnstar = async (jobId: string) => {
+    if (!user) return;
+
+    try {
+      await removeStarredJob(user.uid, jobId);
+      setStarredJobs(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(jobId);
+        return newSet;
+      });
+    } catch (error) {
+      console.error('Error unstarring job:', error);
+      alert('Failed to unstar job. Please try again.');
     }
   };
 
@@ -1322,6 +1370,8 @@ export default function JobSearch() {
                   onCheck={(checked) => handleJobCheck(job.id, checked)}
                   index={index}
                   savedStatus={trackedJobs.get(job.id)}
+                  isStarred={starredJobs.has(job.id)}
+                  onUnstar={handleUnstar}
                 />
               ))
             )}
@@ -1369,7 +1419,10 @@ export default function JobSearch() {
               onAddToApply={handleAddToApply}
               onAddToApplied={handleAddToApplied}
               onRemove={handleRemove}
+              onStar={handleStar}
+              onUnstar={handleUnstar}
               savedStatus={selectedJob ? trackedJobs.get(selectedJob.id) : undefined}
+              isStarred={selectedJob ? starredJobs.has(selectedJob.id) : false}
             />
           )}
         </div>
@@ -1388,9 +1441,12 @@ export default function JobSearch() {
               onAddToApply={handleAddToApply}
               onAddToApplied={handleAddToApplied}
               onRemove={handleRemove}
+              onStar={handleStar}
+              onUnstar={handleUnstar}
               onClose={() => setMobileDetailOpen(false)}
               isMobile
               savedStatus={selectedJob ? trackedJobs.get(selectedJob.id) : undefined}
+              isStarred={selectedJob ? starredJobs.has(selectedJob.id) : false}
             />
           </div>
         </>

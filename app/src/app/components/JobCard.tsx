@@ -26,6 +26,8 @@ type JobCardProps = {
   index?: number;
   showNewBadge?: boolean; // Override default NEW badge logic
   savedStatus?: 'to_apply' | 'applied'; // Status from tracked jobs
+  isStarred?: boolean; // Whether job is starred
+  onUnstar?: (jobId: string) => void; // Unstar handler (only shown if starred)
 };
 
 function formatDate(dateString: string): string {
@@ -73,16 +75,18 @@ function getJobType(title: string): "intern" | "newgrad" | null {
   return null;
 }
 
-export function JobCard({ 
-  job, 
-  isSelected, 
-  onClick, 
-  bulkMode = false, 
-  isChecked = false, 
+export function JobCard({
+  job,
+  isSelected,
+  onClick,
+  bulkMode = false,
+  isChecked = false,
   onCheck,
   index = 0,
   showNewBadge,
-  savedStatus
+  savedStatus,
+  isStarred = false,
+  onUnstar
 }: JobCardProps) {
   const isClosed = job.status === "CLOSED";
   // Use showNewBadge prop if provided, otherwise fall back to default logic
@@ -93,6 +97,11 @@ export function JobCard({
   const handleCheckboxClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onCheck?.(!isChecked);
+  };
+
+  const handleUnstarClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onUnstar?.(job.id);
   };
 
   return (
@@ -115,6 +124,19 @@ export function JobCard({
             </svg>
             NEW
           </span>
+        </div>
+      )}
+
+      {/* Star Icon (only shown if starred) */}
+      {isStarred && (
+        <div
+          className="absolute top-1/2 -translate-y-1/2 right-3 z-10 cursor-pointer"
+          onClick={handleUnstarClick}
+          title="Unstar job"
+        >
+          <svg className="h-5 w-5 text-yellow-500 dark:text-yellow-400 hover:text-yellow-600 dark:hover:text-yellow-300 transition-colors drop-shadow" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+          </svg>
         </div>
       )}
 

@@ -25,9 +25,12 @@ type JobDetailPanelProps = {
   onAddToApply?: (jobId: string) => void;
   onAddToApplied?: (jobId: string) => void;
   onRemove?: (jobId: string) => void;
+  onStar?: (jobId: string) => void;
+  onUnstar?: (jobId: string) => void;
   onClose?: () => void;
   isMobile?: boolean;
   savedStatus?: 'to_apply' | 'applied';
+  isStarred?: boolean;
 };
 
 function formatDate(dateString: string): string {
@@ -111,7 +114,7 @@ function formatDescription(input: string | null): string {
   return text || "No description available for this position.";
 }
 
-export function JobDetailPanel({ job, onAddToApply, onAddToApplied, onRemove, onClose, isMobile = false, savedStatus }: JobDetailPanelProps) {
+export function JobDetailPanel({ job, onAddToApply, onAddToApplied, onRemove, onStar, onUnstar, onClose, isMobile = false, savedStatus, isStarred = false }: JobDetailPanelProps) {
   const { user } = useAuth();
   const [saveDropdownOpen, setSaveDropdownOpen] = useState(false);
 
@@ -171,6 +174,16 @@ export function JobDetailPanel({ job, onAddToApply, onAddToApplied, onRemove, on
       if (onAddToApplied) onAddToApplied(job.id);
     }
     setSaveDropdownOpen(false);
+  };
+
+  const handleToggleStar = () => {
+    if (!user) return;
+
+    if (isStarred) {
+      if (onUnstar) onUnstar(job.id);
+    } else {
+      if (onStar) onStar(job.id);
+    }
   };
 
   const containerClass = isMobile 
@@ -274,7 +287,7 @@ export function JobDetailPanel({ job, onAddToApply, onAddToApplied, onRemove, on
               </svg>
               Apply Now
             </a>
-            
+
             {/* Save Dropdown - Only show when logged in */}
             {user ? (
               <div className="relative">
@@ -359,6 +372,24 @@ export function JobDetailPanel({ job, onAddToApply, onAddToApplied, onRemove, on
               <div className="text-center py-2 px-4 text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700 rounded-lg">
                 Sign in to save jobs
               </div>
+            )}
+
+            {/* Star Button - Icon only, shown after Save button when logged in */}
+            {user && (
+              <button
+                type="button"
+                onClick={handleToggleStar}
+                className={`inline-flex items-center justify-center rounded-lg border p-2.5 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-800 ${
+                  isStarred
+                    ? "border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-900/50 focus:ring-yellow-500"
+                    : "border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-400 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-600 hover:text-yellow-500 dark:hover:text-yellow-400 focus:ring-slate-500"
+                }`}
+                title={isStarred ? "Unstar job" : "Star job"}
+              >
+                <svg className="h-5 w-5" fill={isStarred ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                </svg>
+              </button>
             )}
           </div>
         </div>

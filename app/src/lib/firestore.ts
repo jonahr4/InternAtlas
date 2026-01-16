@@ -315,6 +315,96 @@ export async function removeTrackedJob(userId: string, jobId: string): Promise<v
   await Promise.all(deletePromises);
 }
 
+// ============================================================
+// STARRED JOBS
+// ============================================================
+
+export interface StarredJob {
+  id: string;
+  userId: string;
+  jobId: string;
+  createdAt: Date;
+}
+
+// Convert Firestore document to StarredJob
+function docToStarredJob(docId: string, data: any): StarredJob {
+  return {
+    id: docId,
+    userId: data.userId,
+    jobId: data.jobId,
+    createdAt: data.createdAt?.toDate() || new Date(),
+  };
+}
+
+// Get user's starred jobs
+export async function getUserStarredJobs(userId: string): Promise<StarredJob[]> {
+  try {
+    const q = query(
+      collection(db, "starredJobs"),
+      where("userId", "==", userId),
+      orderBy("createdAt", "desc")
+    );
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => docToStarredJob(doc.id, doc.data()));
+  } catch (error: any) {
+    if (error?.code === 'failed-precondition' || error?.message?.includes('index')) {
+      console.warn('Firestore index not created yet. Using simple query.');
+      const q = query(
+        collection(db, "starredJobs"),
+        where("userId", "==", userId)
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => docToStarredJob(doc.id, doc.data()));
+    }
+    throw error;
+  }
+}
+
+// Add a starred job
+export async function addStarredJob(userId: string, jobId: string): Promise<string> {
+  const now = Timestamp.now();
+
+  // Check if already starred
+  const existingQuery = query(
+    collection(db, "starredJobs"),
+    where("userId", "==", userId),
+    where("jobId", "==", jobId)
+  );
+
+  const existingSnapshot = await getDocs(existingQuery);
+
+  if (!existingSnapshot.empty) {
+    return existingSnapshot.docs[0].id;
+  }
+
+  // Create new entry
+  const docRef = await addDoc(collection(db, "starredJobs"), {
+    userId,
+    jobId,
+    createdAt: now,
+  });
+
+  return docRef.id;
+}
+
+// Remove a starred job
+export async function removeStarredJob(userId: string, jobId: string): Promise<void> {
+  const q = query(
+    collection(db, "starredJobs"),
+    where("userId", "==", userId),
+    where("jobId", "==", jobId)
+  );
+
+  const snapshot = await getDocs(q);
+  const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+  await Promise.all(deletePromises);
+}
+
+// ============================================================
+// TRACKED JOBS - BULK OPERATIONS
+// ============================================================
+
 // Bulk add tracked jobs
 export async function bulkAddTrackedJobs(
   userId: string,

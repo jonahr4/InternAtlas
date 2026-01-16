@@ -20,6 +20,9 @@ import {
   removeTrackedJob,
   bulkAddTrackedJobs,
   getUserTrackedJobs,
+  addStarredJob,
+  removeStarredJob,
+  getUserStarredJobs,
   type CustomTable,
 } from "@/lib/firestore";
 
@@ -92,7 +95,10 @@ export default function CustomTablesPage() {
   
   // Tracked jobs (for showing save status)
   const [trackedJobs, setTrackedJobs] = useState<Map<string, 'to_apply' | 'applied'>>(new Map());
-  
+
+  // Starred jobs
+  const [starredJobs, setStarredJobs] = useState<Set<string>>(new Set());
+
   // Status filter and bulk select
   const [statusFilter, setStatusFilter] = useState<"open" | "closed" | "both">("both");
   const [bulkMode, setBulkMode] = useState(false);
@@ -155,6 +161,23 @@ export default function CustomTablesPage() {
       });
     } else {
       setTrackedJobs(new Map());
+    }
+  }, [user?.uid]);
+
+  // Fetch starred jobs when user logs in
+  useEffect(() => {
+    if (user?.uid) {
+      getUserStarredJobs(user.uid).then(jobs => {
+        const set = new Set<string>();
+        jobs.forEach(job => {
+          set.add(job.jobId);
+        });
+        setStarredJobs(set);
+      }).catch(err => {
+        console.error('Failed to fetch starred jobs:', err);
+      });
+    } else {
+      setStarredJobs(new Set());
     }
   }, [user?.uid]);
 
@@ -365,6 +388,34 @@ export default function CustomTablesPage() {
       );
     } catch (error) {
       console.error("Error marking as seen:", error);
+    }
+  };
+
+  const handleStar = async (jobId: string) => {
+    if (!user) return;
+
+    try {
+      await addStarredJob(user.uid, jobId);
+      setStarredJobs(prev => new Set(prev).add(jobId));
+    } catch (error) {
+      console.error('Error starring job:', error);
+      alert('Failed to star job. Please try again.');
+    }
+  };
+
+  const handleUnstar = async (jobId: string) => {
+    if (!user) return;
+
+    try {
+      await removeStarredJob(user.uid, jobId);
+      setStarredJobs(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(jobId);
+        return newSet;
+      });
+    } catch (error) {
+      console.error('Error unstarring job:', error);
+      alert('Failed to unstar job. Please try again.');
     }
   };
 
@@ -1018,17 +1069,19 @@ export default function CustomTablesPage() {
               </div>
             ) : (
               jobs.map((job, index) => (
-                <JobCard 
-                  key={job.id} 
-                  job={job} 
-                  isSelected={selectedJobId === job.id} 
-                  onClick={() => setSelectedJobId(job.id)} 
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  isSelected={selectedJobId === job.id}
+                  onClick={() => setSelectedJobId(job.id)}
                   index={index}
                   showNewBadge={isJobNew(job)}
                   bulkMode={bulkMode}
                   isChecked={selectedJobs.has(job.id)}
                   onCheck={(checked) => handleJobCheck(job.id, checked)}
                   savedStatus={trackedJobs.get(job.id)}
+                  isStarred={starredJobs.has(job.id)}
+                  onUnstar={handleUnstar}
                 />
               ))
             )}
@@ -1108,6 +1161,9 @@ export default function CustomTablesPage() {
                 }
               }}
               savedStatus={trackedJobs.get(selectedJob.id)}
+              onStar={handleStar}
+              onUnstar={handleUnstar}
+              isStarred={starredJobs.has(selectedJob.id)}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-500">
@@ -1169,6 +1225,9 @@ export default function CustomTablesPage() {
                 }
               }}
               savedStatus={trackedJobs.get(selectedJob.id)}
+              onStar={handleStar}
+              onUnstar={handleUnstar}
+              isStarred={starredJobs.has(selectedJob.id)}
             />
           </div>
         </>

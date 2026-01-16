@@ -9,6 +9,9 @@ import {
   getUserTrackedJobsByStatus,
   updateTrackedJobStatus,
   deleteTrackedJob,
+  getUserStarredJobs,
+  addStarredJob,
+  removeStarredJob,
 } from "@/lib/firestore";
 
 type Job = {
@@ -36,6 +39,7 @@ export default function TrackingPage() {
   const { user } = useAuth();
   const [toApplyJobs, setToApplyJobs] = useState<Job[]>([]);
   const [appliedJobs, setAppliedJobs] = useState<Job[]>([]);
+  const [starredJobIds, setStarredJobIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
@@ -51,24 +55,29 @@ export default function TrackingPage() {
     try {
       setLoading(true);
 
-      // Get tracked jobs from Firestore
-      const [toApplyTracked, appliedTracked] = await Promise.all([
+      // Get tracked jobs and starred jobs from Firestore
+      const [toApplyTracked, appliedTracked, starredTracked] = await Promise.all([
         getUserTrackedJobsByStatus(user.uid, "to_apply"),
         getUserTrackedJobsByStatus(user.uid, "applied"),
+        getUserStarredJobs(user.uid),
       ]);
+
+      // Create a set of starred job IDs for quick lookup
+      const starredIds = new Set(starredTracked.map(sj => sj.jobId));
+      setStarredJobIds(starredIds);
 
       // Get job details from Postgres API for each list
       const loadJobDetails = async (trackedJobs: any[]) => {
         if (trackedJobs.length === 0) return [];
-        
+
         const jobIds = trackedJobs.map(tj => tj.jobId);
         const response = await fetch(`/api/jobs?ids=${jobIds.join(",")}`);
-        
+
         if (!response.ok) return [];
-        
+
         const data = await response.json();
         const jobs = data.items || [];
-        
+
         // Merge tracked data with job details
         return jobs.map((job: any) => {
           const tracked = trackedJobs.find(tj => tj.jobId === job.id);
@@ -166,6 +175,45 @@ export default function TrackingPage() {
     }
   };
 
+  const starJob = async (jobId: string) => {
+    if (!user) return;
+
+    try {
+      setActionLoading(jobId);
+      await addStarredJob(user.uid, jobId);
+
+      // Optimistically update UI
+      setStarredJobIds((prev) => new Set(prev).add(jobId));
+    } catch (error) {
+      console.error("Error starring job:", error);
+      alert("Failed to star job. Please try again.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const unstarJob = async (jobId: string) => {
+    if (!user) return;
+
+    try {
+      setActionLoading(jobId);
+      await removeStarredJob(user.uid, jobId);
+
+      // Optimistically update UI
+      setStarredJobIds((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(jobId);
+        return newSet;
+      });
+    } catch (error) {
+      console.error("Error unstarring job:", error);
+      alert("Failed to unstar job. Please try again.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+
   if (!user) {
     return (
       <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-900">
@@ -262,6 +310,9 @@ export default function TrackingPage() {
                       job={job}
                       onMoveToApplied={() => moveToApplied(job)}
                       onRemove={() => removeJob(job)}
+                      isStarred={starredJobIds.has(job.id)}
+                      onStar={() => starJob(job.id)}
+                      onUnstar={() => unstarJob(job.id)}
                       showActions={actionLoading !== job.id}
                     />
                   ))}
@@ -312,6 +363,9 @@ export default function TrackingPage() {
                       job={job}
                       onMoveToToApply={() => moveToToApply(job)}
                       onRemove={() => removeJob(job)}
+                      isStarred={starredJobIds.has(job.id)}
+                      onStar={() => starJob(job.id)}
+                      onUnstar={() => unstarJob(job.id)}
                       showActions={actionLoading !== job.id}
                     />
                   ))}

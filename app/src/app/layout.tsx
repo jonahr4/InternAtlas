@@ -19,6 +19,10 @@ export const metadata: Metadata = {
     template: "%s | InternAtlas"
   },
   description: "Find software engineering internships and new grad jobs from 2,500+ companies. Search through 600,000+ positions from our database. InternAtlas crawls company career pages directly to give you complete coverage of internship opportunities and entry-level positions at top tech companies. Updated twice daily.",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icon.svg",
+  },
   keywords: [
     "internship job board",
     "software engineering internships",
@@ -141,7 +145,7 @@ export default function RootLayout({
                   "url": "https://internatlas.tech",
                   "logo": {
                     "@type": "ImageObject",
-                    "url": "https://internatlas.tech/logo.svg"
+                    "url": "https://internatlas.tech/icon.svg"
                   },
                   "sameAs": []
                 },

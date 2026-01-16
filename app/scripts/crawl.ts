@@ -85,10 +85,34 @@ type SmartRecruitersJob = {
   };
 };
 
+type WorkableJob = {
+  id: number;
+  shortcode: string;
+  title: string;
+  remote?: boolean;
+  location?: {
+    country?: string;
+    countryCode?: string;
+    city?: string;
+    region?: string;
+  };
+  locations?: Array<{
+    country?: string;
+    countryCode?: string;
+    city?: string;
+    region?: string;
+  }>;
+  state?: string;
+  published?: string;
+  type?: string; // "full", "part", "intern", etc.
+  department?: string[];
+  workplace?: string; // "remote", "hybrid", "on_site"
+};
+
 type Company = {
   id: string;
   name: string;
-  platform: "GREENHOUSE" | "LEVER" | "WORKDAY" | "ICIMS" | "SMARTRECRUITERS" | "CUSTOM";
+  platform: "GREENHOUSE" | "LEVER" | "WORKDAY" | "ICIMS" | "SMARTRECRUITERS" | "WORKABLE" | "CUSTOM";
   boardUrl: string;
   firstCrawledAt: Date | null;
 };
@@ -928,13 +952,13 @@ function normalizeSmartRecruitersJob(
     job.location?.region,
     job.location?.country,
   ].filter(Boolean);
-  
+
   const location = locationParts.length > 0 ? locationParts.join(", ") : null;
-  
+
   // Use the company identifier from the job, or fall back to constructing URL
   const companySlug = job.company?.identifier || job.company?.name || '';
   const jobUrl = job.postingUrl || job.applyUrl || `https://jobs.smartrecruiters.com/${companySlug}/${job.id}`;
-  
+
   return {
     companyName,
     externalId: job.id,
@@ -942,6 +966,106 @@ function normalizeSmartRecruitersJob(
     location,
     postedAt: null,
     jobUrl,
+    descriptionText: null,
+  };
+}
+
+function getWorkableSlug(boardUrl: string): string {
+  try {
+    const url = new URL(boardUrl);
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (parts.length === 0) {
+      throw new Error(`Invalid Workable board URL (no slug in path): ${boardUrl}`);
+    }
+    return parts[0];
+  } catch (error) {
+    throw new Error(`Invalid Workable board URL: ${boardUrl}. Error: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function fetchWorkableJobs(boardUrl: string, debug = false): Promise<WorkableJob[]> {
+  const slug = getWorkableSlug(boardUrl);
+  const apiUrl = `https://apply.workable.com/api/v3/accounts/${slug}/jobs`;
+
+  const headers = {
+    Accept: "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Content-Type": "application/json",
+    "User-Agent":
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    Origin: "https://apply.workable.com",
+    Referer: boardUrl,
+  };
+
+  // Workable uses POST with empty filter body
+  const body = JSON.stringify({
+    query: "",
+    location: [],
+    department: [],
+    worktype: [],
+    remote: [],
+  });
+
+  if (debug) {
+    console.log(`  [DEBUG] Workable API URL: ${apiUrl}`);
+  }
+
+  const res = await fetch(apiUrl, {
+    method: "POST",
+    headers,
+    body,
+  });
+
+  if (!res.ok) {
+    if (debug) {
+      const errorText = await res.text();
+      console.log(`  [DEBUG] Workable error ${res.status}: ${errorText.slice(0, 200)}`);
+    }
+    throw new Error(`Failed to fetch ${apiUrl}: ${res.status}`);
+  }
+
+  const data = (await res.json()) as { total?: number; results?: WorkableJob[] };
+  const jobs = data.results ?? [];
+
+  if (debug) {
+    console.log(`  [DEBUG] Workable total jobs: ${data.total ?? jobs.length}`);
+  }
+
+  return jobs;
+}
+
+function normalizeWorkableJob(
+  companyName: string,
+  companySlug: string,
+  job: WorkableJob
+): NormalizedJob {
+  // Build location from the primary location object
+  const locationParts = [
+    job.location?.city,
+    job.location?.region,
+    job.location?.country,
+  ].filter(Boolean);
+
+  // Add remote indicator if workplace is remote
+  let location = locationParts.length > 0 ? locationParts.join(", ") : null;
+  if (job.workplace === "remote" || job.remote) {
+    location = location ? `${location} (Remote)` : "Remote";
+  } else if (job.workplace === "hybrid") {
+    location = location ? `${location} (Hybrid)` : "Hybrid";
+  }
+
+  // Construct job URL from shortcode
+  const jobUrl = `https://apply.workable.com/${companySlug}/j/${job.shortcode}/`;
+
+  return {
+    companyName,
+    externalId: job.shortcode,
+    title: job.title,
+    location,
+    postedAt: job.published ?? null,
+    jobUrl,
+    // NOTE: Workable list API doesn't include descriptions
+    // Would require fetching each job page individually
     descriptionText: null,
   };
 }
@@ -954,6 +1078,7 @@ function getSupportedCompanies(companies: Company[]): Company[] {
       company.platform === "WORKDAY" ||
       company.platform === "ICIMS" ||
       company.platform === "SMARTRECRUITERS" ||
+      company.platform === "WORKABLE" ||
       (company.platform === "CUSTOM" &&
         company.boardUrl.toLowerCase().includes("icims.com"))
   );
@@ -1072,7 +1197,7 @@ async function main() {
   }
 
   if (supportedCompanies.length === 0) {
-    console.log("No Greenhouse, Lever, or Workday companies found.");
+    console.log("No supported ATS companies found (Greenhouse, Lever, Workday, iCIMS, SmartRecruiters, Workable).");
     return;
   }
 
@@ -1148,6 +1273,10 @@ async function main() {
       } else if (effectivePlatform === "SMARTRECRUITERS") {
         const jobs = await fetchSmartRecruitersJobs(company.boardUrl, debugMode);
         normalized = jobs.map((job) => normalizeSmartRecruitersJob(company.name, job));
+      } else if (effectivePlatform === "WORKABLE") {
+        const companySlug = getWorkableSlug(company.boardUrl);
+        const jobs = await fetchWorkableJobs(company.boardUrl, debugMode);
+        normalized = jobs.map((job) => normalizeWorkableJob(company.name, companySlug, job));
       } else {
         console.log(`${company.name}: unsupported ATS (${company.platform})`);
         continue;

@@ -988,27 +988,54 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Adaptive rate limiting state for Workable
+let workableRateLimitHits = 0;
+let workableLastRequestTime = 0;
+
+// Helper to get adaptive delay based on rate limit history
+function getWorkableDelay(): number {
+  // Base delay of 1.5s, increasing by 500ms for each recent rate limit hit
+  const baseDelay = 1500;
+  const additionalDelay = Math.min(workableRateLimitHits * 1000, 5000);
+  return baseDelay + additionalDelay;
+}
+
 // Helper to fetch with retry logic for rate limits
 async function fetchWithRetry(
   url: string,
   options: RequestInit,
-  maxRetries = 3,
+  maxRetries = 5,
   debug = false
 ): Promise<Response> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // Enforce minimum time between Workable requests
+    if (url.includes('workable.com')) {
+      const timeSinceLastRequest = Date.now() - workableLastRequestTime;
+      const minDelay = getWorkableDelay();
+      if (timeSinceLastRequest < minDelay) {
+        await sleep(minDelay - timeSinceLastRequest);
+      }
+      workableLastRequestTime = Date.now();
+    }
+
     const res = await fetch(url, options);
 
     if (res.ok) {
+      // Successful request - gradually reduce rate limit hit counter
+      if (url.includes('workable.com') && workableRateLimitHits > 0) {
+        workableRateLimitHits = Math.max(0, workableRateLimitHits - 0.1);
+      }
       return res;
     }
 
     if (res.status === 429) {
-      // Rate limited - wait with exponential backoff
-      const waitTime = Math.min(1000 * Math.pow(2, attempt), 10000); // 1s, 2s, 4s... max 10s
+      // Rate limited - increase hit counter and wait with exponential backoff
+      workableRateLimitHits++;
+      const waitTime = Math.min(5000 * Math.pow(2, attempt), 60000); // 5s, 10s, 20s, 40s, 60s
       if (debug) {
-        console.log(`  [DEBUG] Rate limited, waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
+        console.log(`  [DEBUG] Rate limited (hit #${workableRateLimitHits}), waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
       }
       await sleep(waitTime);
       lastError = new Error(`Rate limited (429)`);
@@ -1081,9 +1108,6 @@ async function fetchWorkableJobs(boardUrl: string, debug = false): Promise<Worka
   let nextToken: string | undefined = (initialData as any).nextPage;
 
   while (allJobs.length < total && nextToken) {
-    // Add a small delay between pagination requests to avoid rate limits
-    await sleep(100);
-
     const pageBody = JSON.stringify({
       query: "",
       location: [],
@@ -1744,9 +1768,10 @@ async function main() {
         )}${status.padEnd(12)}${totalLabel.padEnd(18)}${newLabel.padEnd(18)}${totalClosedLabel.padEnd(18)}${newClosedLabel}`
       );
 
-      // Add delay between Workable companies to avoid rate limiting
+      // Add adaptive delay between Workable companies to avoid rate limiting
       if (company.platform === "WORKABLE") {
-        await sleep(500); // 500ms delay between companies
+        const delay = getWorkableDelay();
+        await sleep(delay);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1755,6 +1780,13 @@ async function main() {
       console.error(`${company.name}: error - ${message}`);
       if (debugMode && stack) {
         console.error(`  Stack: ${stack}`);
+      }
+
+      // If we hit a rate limit, add extra cooldown before next company
+      if (company.platform === "WORKABLE" && message.includes('429')) {
+        const cooldown = 10000 + (workableRateLimitHits * 2000); // 10s base + 2s per hit
+        console.log(`  Cooling down for ${cooldown / 1000}s after rate limit...`);
+        await sleep(cooldown);
       }
     }
   }

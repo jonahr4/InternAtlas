@@ -983,6 +983,45 @@ function getWorkableSlug(boardUrl: string): string {
   }
 }
 
+// Helper to sleep for a given number of milliseconds
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Helper to fetch with retry logic for rate limits
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries = 3,
+  debug = false
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const res = await fetch(url, options);
+
+    if (res.ok) {
+      return res;
+    }
+
+    if (res.status === 429) {
+      // Rate limited - wait with exponential backoff
+      const waitTime = Math.min(1000 * Math.pow(2, attempt), 10000); // 1s, 2s, 4s... max 10s
+      if (debug) {
+        console.log(`  [DEBUG] Rate limited, waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
+      }
+      await sleep(waitTime);
+      lastError = new Error(`Rate limited (429)`);
+      continue;
+    }
+
+    // For other errors, don't retry
+    return res;
+  }
+
+  throw lastError || new Error('Max retries exceeded');
+}
+
 async function fetchWorkableJobs(boardUrl: string, debug = false): Promise<WorkableJob[]> {
   const slug = getWorkableSlug(boardUrl);
   const apiUrl = `https://apply.workable.com/api/v3/accounts/${slug}/jobs`;
@@ -1010,11 +1049,11 @@ async function fetchWorkableJobs(boardUrl: string, debug = false): Promise<Worka
     remote: [],
   });
 
-  const initialRes = await fetch(apiUrl, {
+  const initialRes = await fetchWithRetry(apiUrl, {
     method: "POST",
     headers,
     body: initialBody,
-  });
+  }, 3, debug);
 
   if (!initialRes.ok) {
     if (debug) {
@@ -1042,6 +1081,9 @@ async function fetchWorkableJobs(boardUrl: string, debug = false): Promise<Worka
   let nextToken: string | undefined = (initialData as any).nextPage;
 
   while (allJobs.length < total && nextToken) {
+    // Add a small delay between pagination requests to avoid rate limits
+    await sleep(100);
+
     const pageBody = JSON.stringify({
       query: "",
       location: [],
@@ -1051,11 +1093,11 @@ async function fetchWorkableJobs(boardUrl: string, debug = false): Promise<Worka
       token: nextToken,
     });
 
-    const pageRes = await fetch(apiUrl, {
+    const pageRes = await fetchWithRetry(apiUrl, {
       method: "POST",
       headers,
       body: pageBody,
-    });
+    }, 3, debug);
 
     if (!pageRes.ok) {
       if (debug) {
@@ -1701,6 +1743,11 @@ async function main() {
           atsColumnWidth
         )}${status.padEnd(12)}${totalLabel.padEnd(18)}${newLabel.padEnd(18)}${totalClosedLabel.padEnd(18)}${newClosedLabel}`
       );
+
+      // Add delay between Workable companies to avoid rate limiting
+      if (company.platform === "WORKABLE") {
+        await sleep(500); // 500ms delay between companies
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const stack = error instanceof Error ? error.stack : '';

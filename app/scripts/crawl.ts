@@ -997,8 +997,12 @@ async function fetchWorkableJobs(boardUrl: string, debug = false): Promise<Worka
     Referer: boardUrl,
   };
 
-  // Workable uses POST with empty filter body
-  const body = JSON.stringify({
+  if (debug) {
+    console.log(`  [DEBUG] Workable API URL: ${apiUrl}`);
+  }
+
+  // First request to get total count
+  const initialBody = JSON.stringify({
     query: "",
     location: [],
     department: [],
@@ -1006,32 +1010,80 @@ async function fetchWorkableJobs(boardUrl: string, debug = false): Promise<Worka
     remote: [],
   });
 
-  if (debug) {
-    console.log(`  [DEBUG] Workable API URL: ${apiUrl}`);
-  }
-
-  const res = await fetch(apiUrl, {
+  const initialRes = await fetch(apiUrl, {
     method: "POST",
     headers,
-    body,
+    body: initialBody,
   });
 
-  if (!res.ok) {
+  if (!initialRes.ok) {
     if (debug) {
-      const errorText = await res.text();
-      console.log(`  [DEBUG] Workable error ${res.status}: ${errorText.slice(0, 200)}`);
+      const errorText = await initialRes.text();
+      console.log(`  [DEBUG] Workable error ${initialRes.status}: ${errorText.slice(0, 200)}`);
     }
-    throw new Error(`Failed to fetch ${apiUrl}: ${res.status}`);
+    throw new Error(`Failed to fetch ${apiUrl}: ${initialRes.status}`);
   }
 
-  const data = (await res.json()) as { total?: number; results?: WorkableJob[] };
-  const jobs = data.results ?? [];
+  const initialData = (await initialRes.json()) as { total?: number; results?: WorkableJob[] };
+  const total = initialData.total ?? 0;
+  const allJobs: WorkableJob[] = [...(initialData.results ?? [])];
 
   if (debug) {
-    console.log(`  [DEBUG] Workable total jobs: ${data.total ?? jobs.length}`);
+    console.log(`  [DEBUG] Workable total jobs: ${total}`);
   }
 
-  return jobs;
+  // If we got all jobs in the first request, return early
+  if (allJobs.length >= total) {
+    return allJobs;
+  }
+
+  // Paginate to get remaining jobs using the "token" field
+  // Workable uses cursor-based pagination with a token
+  let nextToken: string | undefined = (initialData as any).nextPage;
+
+  while (allJobs.length < total && nextToken) {
+    const pageBody = JSON.stringify({
+      query: "",
+      location: [],
+      department: [],
+      worktype: [],
+      remote: [],
+      token: nextToken,
+    });
+
+    const pageRes = await fetch(apiUrl, {
+      method: "POST",
+      headers,
+      body: pageBody,
+    });
+
+    if (!pageRes.ok) {
+      if (debug) {
+        console.log(`  [DEBUG] Workable pagination error ${pageRes.status}`);
+      }
+      break;
+    }
+
+    const pageData = (await pageRes.json()) as { results?: WorkableJob[]; nextPage?: string };
+    const pageJobs = pageData.results ?? [];
+
+    if (pageJobs.length === 0) {
+      break;
+    }
+
+    allJobs.push(...pageJobs);
+    nextToken = pageData.nextPage;
+
+    if (debug) {
+      console.log(`  [DEBUG] Workable fetched ${allJobs.length}/${total} jobs...`);
+    }
+  }
+
+  if (debug) {
+    console.log(`  [DEBUG] Workable total jobs fetched: ${allJobs.length}`);
+  }
+
+  return allJobs;
 }
 
 function normalizeWorkableJob(

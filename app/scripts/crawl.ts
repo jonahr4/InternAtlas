@@ -384,7 +384,19 @@ function getWorkdayExternalId(job: WorkdayJob): string | null {
 }
 
 function stripHtmlTags(input: string): string {
-  return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return input
+    .replace(/<[^>]*>/g, " ")      // Remove HTML tags
+    .replace(/&nbsp;/gi, " ")       // Replace &nbsp; with space
+    .replace(/&amp;/gi, "&")        // Decode &amp;
+    .replace(/&lt;/gi, "<")         // Decode &lt;
+    .replace(/&gt;/gi, ">")         // Decode &gt;
+    .replace(/&quot;/gi, '"')       // Decode &quot;
+    .replace(/&#39;/gi, "'")        // Decode &#39;
+    .replace(/&apos;/gi, "'")       // Decode &apos;
+    .replace(/&#x27;/gi, "'")       // Decode &#x27;
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10))) // Numeric entities
+    .replace(/\s+/g, " ")           // Collapse whitespace
+    .trim();
 }
 
 async function mergeWorkdayDuplicates(companyId: string) {

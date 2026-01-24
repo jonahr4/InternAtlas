@@ -690,7 +690,7 @@ export default function CustomTablesPage() {
       
       <main className="flex flex-1 overflow-hidden">
         {/* Sidebar - Table List */}
-        <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed left-0 top-0 bottom-0 z-30 ${sidebarCollapsed ? 'w-16' : 'w-64'} bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 lg:static lg:translate-x-0 transition-all duration-300 flex flex-col`}>
+        <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed left-0 top-0 bottom-0 z-50 ${sidebarCollapsed ? 'w-16' : 'w-64'} bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 lg:static lg:translate-x-0 transition-all duration-300 flex flex-col`}>
           <div className="flex-none p-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
             {!sidebarCollapsed && <h2 className="font-semibold text-slate-900 dark:text-white">My Tables</h2>}
             <div className="flex items-center gap-1">

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <style>
+      .cls-1 {
+        stroke-width: 2px;
+      }
+
+      .cls-1, .cls-2 {
+        fill: none;
+        stroke: #1e3a5f;
+      }
+
+      .cls-3 {
+        fill: #fff;
+      }
+
+      .cls-4 {
+        fill: #1e3a5f;
+      }
+
+      .cls-2 {
+        stroke-linecap: round;
+        stroke-width: 2.5px;
+      }
+    </style>
+  </defs>
+  <circle class="cls-1" cx="48.83" cy="50" r="28"/>
+  <ellipse class="cls-1" cx="48.83" cy="50" rx="28" ry="10"/>
+  <line class="cls-1" x1="20.83" y1="50" x2="76.83" y2="50"/>
+  <ellipse class="cls-1" cx="48.83" cy="50" rx="12" ry="28"/>
+  <path class="cls-4" d="M48.83,8c-6,0-10,4-10,10s10,14,10,14c0,0,10-8,10-14s-4-10-10-10Z"/>
+  <circle class="cls-3" cx="48.83" cy="17" r="3"/>
+  <path class="cls-2" d="M83.83,45c4.67,13.33,3,24.33-5,33-10,6.67-21.67,9-35,7"/>
+  <polygon class="cls-4" points="43.83 80 43.83 90 53.83 85 43.83 80"/>
+</svg>

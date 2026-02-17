@@ -1,8 +1,9 @@
+# InternAtlas
+
 <p align="center">
   <img src="app/public/InternAtlasBanner.png" alt="InternAtlas Banner" />
 </p>
 
-# InternAtlas
 **A production job aggregation platform that crawls 2000+ companies across 4 ATS providers, serving 300,000+ internship and new-grad listings through an intelligent, searchable job board with custom filtering and application tracking.**
 
 🌐 **Live Site:** [https://internatlas.tech](https://internatlas.tech)

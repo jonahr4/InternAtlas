@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: internatlas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-internatlas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-internatlas}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-internatlas}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Modest tuning for a 2 OCPU / 12 GB box holding a few-GB database.
+    command:
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=4GB
+      - -c
+      - max_connections=100
+      - -c
+      - log_min_duration_statement=1000
+
+volumes:
+  pgdata:
